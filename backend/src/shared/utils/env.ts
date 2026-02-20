@@ -18,29 +18,29 @@ dotenv.config();
  * Add new variables here as the system grows.
  */
 const envSchema = z.object({
-    // Server
-    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-    PORT: z.coerce.number().int().positive().default(3000),
+  // Server
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT: z.coerce.number().int().positive().default(3000),
 
-    // Database
-    DATABASE_URL: z.string().url(),
+  // Database
+  DATABASE_URL: z.string().url(),
 
-    // JWT
-    JWT_ACCESS_SECRET: z.string().min(16),
-    JWT_REFRESH_SECRET: z.string().min(16),
-    JWT_ACCESS_EXPIRY: z.string().default('15m'),
-    JWT_REFRESH_EXPIRY: z.string().default('7d'),
+  // JWT
+  JWT_ACCESS_SECRET: z.string().min(16),
+  JWT_REFRESH_SECRET: z.string().min(16),
+  JWT_ACCESS_EXPIRY: z.string().default('15m'),
+  JWT_REFRESH_EXPIRY: z.string().default('7d'),
 
-    // Redis
-    REDIS_HOST: z.string().default('localhost'),
-    REDIS_PORT: z.coerce.number().int().positive().default(6379),
-    REDIS_PASSWORD: z.string().optional().default(''),
+  // Redis
+  REDIS_HOST: z.string().default('localhost'),
+  REDIS_PORT: z.coerce.number().int().positive().default(6379),
+  REDIS_PASSWORD: z.string().optional().default(''),
 
-    // Bcrypt
-    BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(4).max(31).default(12),
+  // Bcrypt
+  BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(4).max(31).default(12),
 
-    // CORS
-    CORS_ORIGIN: z.string().default('http://localhost:3001'),
+  // CORS
+  CORS_ORIGIN: z.string().default('http://localhost:3001'),
 });
 
 /**
@@ -48,15 +48,15 @@ const envSchema = z.object({
  * On failure, log the specific issues and exit the process.
  */
 function validateEnv(): z.infer<typeof envSchema> {
-    const result = envSchema.safeParse(process.env);
+  const result = envSchema.safeParse(process.env);
 
-    if (!result.success) {
-        console.error('❌ Invalid environment variables:');
-        console.error(JSON.stringify(result.error.flatten().fieldErrors, null, 2));
-        process.exit(1);
-    }
+  if (!result.success) {
+    console.error('❌ Invalid environment variables:');
+    console.error(JSON.stringify(result.error.flatten().fieldErrors, null, 2));
+    process.exit(1);
+  }
 
-    return result.data;
+  return result.data;
 }
 
 /**

@@ -24,29 +24,29 @@ import { UnauthorizedError } from '../utils/app-error';
  * Must be placed before any route handler that requires a logged-in user.
  */
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
-    const authHeader = req.headers.authorization;
+  const authHeader = req.headers.authorization;
 
-    if (!authHeader) {
-        throw UnauthorizedError('Authorization header required');
-    }
+  if (!authHeader) {
+    throw UnauthorizedError('Authorization header required');
+  }
 
-    // Expect format: "Bearer <token>"
-    const parts = authHeader.split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
-        throw UnauthorizedError('Bearer token required');
-    }
+  // Expect format: "Bearer <token>"
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+    throw UnauthorizedError('Bearer token required');
+  }
 
-    const token = parts[1];
+  const token = parts[1];
 
-    // verifyAccessToken throws UnauthorizedError on failure
-    const payload = verifyAccessToken(token);
+  // verifyAccessToken throws UnauthorizedError on failure
+  const payload = verifyAccessToken(token);
 
-    // Attach decoded payload to request for downstream handlers
-    // Type-safe via the express.d.ts augmentation from Phase 1
-    req.user = {
-        userId: payload.userId,
-        email: '', // Email is not in the access token payload; populated by service if needed
-    };
+  // Attach decoded payload to request for downstream handlers
+  // Type-safe via the express.d.ts augmentation from Phase 1
+  req.user = {
+    userId: payload.userId,
+    email: '', // Email is not in the access token payload; populated by service if needed
+  };
 
-    next();
+  next();
 }

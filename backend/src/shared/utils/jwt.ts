@@ -26,14 +26,14 @@ import { UnauthorizedError } from './app-error';
 
 /** Decoded access token payload */
 export interface AccessTokenPayload {
-    userId: string;
+  userId: string;
 }
 
 /** Decoded refresh token payload */
 export interface RefreshTokenPayload {
-    userId: string;
-    /** Unique token identifier for DB tracking and revocation */
-    jti: string;
+  userId: string;
+  /** Unique token identifier for DB tracking and revocation */
+  jti: string;
 }
 
 // ---- Token Generation ----
@@ -44,17 +44,22 @@ export interface RefreshTokenPayload {
  * expected by jwt.sign()'s expiresIn option.
  */
 function parseDurationToSeconds(duration: string): number {
-    const match = duration.match(/^(\d+)([smhd])$/);
-    if (!match) return 900; // Default: 15 minutes
+  const match = duration.match(/^(\d+)([smhd])$/);
+  if (!match) return 900; // Default: 15 minutes
 
-    const value = parseInt(match[1], 10);
-    switch (match[2]) {
-        case 's': return value;
-        case 'm': return value * 60;
-        case 'h': return value * 3600;
-        case 'd': return value * 86400;
-        default: return 900;
-    }
+  const value = parseInt(match[1], 10);
+  switch (match[2]) {
+    case 's':
+      return value;
+    case 'm':
+      return value * 60;
+    case 'h':
+      return value * 3600;
+    case 'd':
+      return value * 86400;
+    default:
+      return 900;
+  }
 }
 
 /**
@@ -64,9 +69,9 @@ function parseDurationToSeconds(duration: string): number {
  * @returns Signed JWT access token string
  */
 export function generateAccessToken(userId: string): string {
-    return jwt.sign({ userId }, env.JWT_ACCESS_SECRET, {
-        expiresIn: parseDurationToSeconds(env.JWT_ACCESS_EXPIRY),
-    });
+  return jwt.sign({ userId }, env.JWT_ACCESS_SECRET, {
+    expiresIn: parseDurationToSeconds(env.JWT_ACCESS_EXPIRY),
+  });
 }
 
 /**
@@ -78,11 +83,11 @@ export function generateAccessToken(userId: string): string {
  * @returns Object containing the signed token and its JTI
  */
 export function generateRefreshToken(userId: string): { token: string; jti: string } {
-    const jti = uuidv4();
-    const token = jwt.sign({ userId, jti }, env.JWT_REFRESH_SECRET, {
-        expiresIn: parseDurationToSeconds(env.JWT_REFRESH_EXPIRY),
-    });
-    return { token, jti };
+  const jti = uuidv4();
+  const token = jwt.sign({ userId, jti }, env.JWT_REFRESH_SECRET, {
+    expiresIn: parseDurationToSeconds(env.JWT_REFRESH_EXPIRY),
+  });
+  return { token, jti };
 }
 
 /**
@@ -93,13 +98,13 @@ export function generateRefreshToken(userId: string): { token: string; jti: stri
  * @returns Both tokens and the refresh token's JTI
  */
 export function generateTokenPair(userId: string): {
-    accessToken: string;
-    refreshToken: string;
-    refreshJti: string;
+  accessToken: string;
+  refreshToken: string;
+  refreshJti: string;
 } {
-    const accessToken = generateAccessToken(userId);
-    const { token: refreshToken, jti: refreshJti } = generateRefreshToken(userId);
-    return { accessToken, refreshToken, refreshJti };
+  const accessToken = generateAccessToken(userId);
+  const { token: refreshToken, jti: refreshJti } = generateRefreshToken(userId);
+  return { accessToken, refreshToken, refreshJti };
 }
 
 // ---- Token Verification ----
@@ -112,18 +117,18 @@ export function generateTokenPair(userId: string): {
  * @returns Decoded payload with userId
  */
 export function verifyAccessToken(token: string): AccessTokenPayload {
-    try {
-        const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessTokenPayload;
-        return payload;
-    } catch (error) {
-        if (error instanceof TokenExpiredError) {
-            throw UnauthorizedError('Access token expired');
-        }
-        if (error instanceof JsonWebTokenError) {
-            throw UnauthorizedError('Invalid access token');
-        }
-        throw UnauthorizedError('Token verification failed');
+  try {
+    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessTokenPayload;
+    return payload;
+  } catch (error) {
+    if (error instanceof TokenExpiredError) {
+      throw UnauthorizedError('Access token expired');
     }
+    if (error instanceof JsonWebTokenError) {
+      throw UnauthorizedError('Invalid access token');
+    }
+    throw UnauthorizedError('Token verification failed');
+  }
 }
 
 /**
@@ -134,18 +139,18 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
  * @returns Decoded payload with userId and jti
  */
 export function verifyRefreshToken(token: string): RefreshTokenPayload {
-    try {
-        const payload = jwt.verify(token, env.JWT_REFRESH_SECRET) as RefreshTokenPayload;
-        return payload;
-    } catch (error) {
-        if (error instanceof TokenExpiredError) {
-            throw UnauthorizedError('Refresh token expired');
-        }
-        if (error instanceof JsonWebTokenError) {
-            throw UnauthorizedError('Invalid refresh token');
-        }
-        throw UnauthorizedError('Token verification failed');
+  try {
+    const payload = jwt.verify(token, env.JWT_REFRESH_SECRET) as RefreshTokenPayload;
+    return payload;
+  } catch (error) {
+    if (error instanceof TokenExpiredError) {
+      throw UnauthorizedError('Refresh token expired');
     }
+    if (error instanceof JsonWebTokenError) {
+      throw UnauthorizedError('Invalid refresh token');
+    }
+    throw UnauthorizedError('Token verification failed');
+  }
 }
 
 /**
@@ -155,31 +160,31 @@ export function verifyRefreshToken(token: string): RefreshTokenPayload {
  * @returns Date object representing when the refresh token expires
  */
 export function getRefreshTokenExpiry(): Date {
-    const expiry = env.JWT_REFRESH_EXPIRY;
-    const now = new Date();
+  const expiry = env.JWT_REFRESH_EXPIRY;
+  const now = new Date();
 
-    // Parse duration string: supports "7d", "24h", "30m"
-    const match = expiry.match(/^(\d+)([dhm])$/);
-    if (!match) {
-        // Default to 7 days if parsing fails
-        now.setDate(now.getDate() + 7);
-        return now;
-    }
-
-    const value = parseInt(match[1], 10);
-    const unit = match[2];
-
-    switch (unit) {
-        case 'd':
-            now.setDate(now.getDate() + value);
-            break;
-        case 'h':
-            now.setHours(now.getHours() + value);
-            break;
-        case 'm':
-            now.setMinutes(now.getMinutes() + value);
-            break;
-    }
-
+  // Parse duration string: supports "7d", "24h", "30m"
+  const match = expiry.match(/^(\d+)([dhm])$/);
+  if (!match) {
+    // Default to 7 days if parsing fails
+    now.setDate(now.getDate() + 7);
     return now;
+  }
+
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+
+  switch (unit) {
+    case 'd':
+      now.setDate(now.getDate() + value);
+      break;
+    case 'h':
+      now.setHours(now.getHours() + value);
+      break;
+    case 'm':
+      now.setMinutes(now.getMinutes() + value);
+      break;
+  }
+
+  return now;
 }

@@ -9,17 +9,17 @@
  */
 
 export interface JwtPayload {
-    /** User UUID */
-    userId: string;
-    /** User email */
-    email: string;
+  /** User UUID */
+  userId: string;
+  /** User email */
+  email: string;
 }
 
 declare global {
-    namespace Express {
-        interface Request {
-            /** Populated by the auth middleware after JWT verification */
-            user?: JwtPayload;
-        }
+  namespace Express {
+    interface Request {
+      /** Populated by the auth middleware after JWT verification */
+      user?: JwtPayload;
     }
+  }
 }

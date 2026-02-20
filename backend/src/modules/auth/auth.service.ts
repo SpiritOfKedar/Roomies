@@ -22,15 +22,11 @@
 import { prisma } from '../../shared/db/prisma';
 import { hashPassword, comparePassword } from '../../shared/utils/hash';
 import {
-    generateTokenPair,
-    verifyRefreshToken,
-    getRefreshTokenExpiry,
+  generateTokenPair,
+  verifyRefreshToken,
+  getRefreshTokenExpiry,
 } from '../../shared/utils/jwt';
-import {
-    ConflictError,
-    UnauthorizedError,
-    NotFoundError,
-} from '../../shared/utils/app-error';
+import { ConflictError, UnauthorizedError } from '../../shared/utils/app-error';
 import * as usersRepo from '../users/users.repository';
 import type { RegisterInput, LoginInput } from './auth.schema';
 import { logger } from '../../shared/utils/logger';
@@ -39,14 +35,14 @@ import { logger } from '../../shared/utils/logger';
 
 /** Token pair returned to the client after login/register/refresh */
 export interface AuthTokens {
-    accessToken: string;
-    refreshToken: string;
+  accessToken: string;
+  refreshToken: string;
 }
 
 /** Full auth response with user data and tokens */
 export interface AuthResponse {
-    user: usersRepo.SafeUser;
-    tokens: AuthTokens;
+  user: usersRepo.SafeUser;
+  tokens: AuthTokens;
 }
 
 // ---- Service Functions ----
@@ -68,47 +64,47 @@ export interface AuthResponse {
  * @throws ConflictError if email already registered
  */
 export async function register(
-    input: RegisterInput,
-    meta: { userAgent?: string; ipAddress?: string } = {},
+  input: RegisterInput,
+  meta: { userAgent?: string; ipAddress?: string } = {},
 ): Promise<AuthResponse> {
-    // 1. Check for existing email
-    const exists = await usersRepo.emailExists(input.email);
-    if (exists) {
-        throw ConflictError('Email already registered');
-    }
+  // 1. Check for existing email
+  const exists = await usersRepo.emailExists(input.email);
+  if (exists) {
+    throw ConflictError('Email already registered');
+  }
 
-    // 2. Hash password
-    const passwordHash = await hashPassword(input.password);
+  // 2. Hash password
+  const passwordHash = await hashPassword(input.password);
 
-    // 3. Create user
-    const user = await usersRepo.createUser({
-        name: input.name,
-        email: input.email,
-        passwordHash,
-    });
+  // 3. Create user
+  const user = await usersRepo.createUser({
+    name: input.name,
+    email: input.email,
+    passwordHash,
+  });
 
-    // 4. Generate tokens
-    const { accessToken, refreshToken, refreshJti } = generateTokenPair(user.id);
+  // 4. Generate tokens
+  const { accessToken, refreshToken } = generateTokenPair(user.id);
 
-    // 5. Store hashed refresh token
-    const refreshTokenHash = await hashPassword(refreshToken);
-    await prisma.refreshToken.create({
-        data: {
-            userId: user.id,
-            tokenHash: refreshTokenHash,
-            expiresAt: getRefreshTokenExpiry(),
-            userAgent: meta.userAgent || null,
-            ipAddress: meta.ipAddress || null,
-        },
-    });
+  // 5. Store hashed refresh token
+  const refreshTokenHash = await hashPassword(refreshToken);
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: refreshTokenHash,
+      expiresAt: getRefreshTokenExpiry(),
+      userAgent: meta.userAgent || null,
+      ipAddress: meta.ipAddress || null,
+    },
+  });
 
-    logger.info({ userId: user.id }, 'User registered');
+  logger.info({ userId: user.id }, 'User registered');
 
-    // 6. Return
-    return {
-        user,
-        tokens: { accessToken, refreshToken },
-    };
+  // 6. Return
+  return {
+    user,
+    tokens: { accessToken, refreshToken },
+  };
 }
 
 /**
@@ -127,55 +123,55 @@ export async function register(
  * @throws UnauthorizedError if credentials are invalid
  */
 export async function login(
-    input: LoginInput,
-    meta: { userAgent?: string; ipAddress?: string } = {},
+  input: LoginInput,
+  meta: { userAgent?: string; ipAddress?: string } = {},
 ): Promise<AuthResponse> {
-    // 1. Find user (need password hash, so use findUserByEmail not safe version)
-    const user = await usersRepo.findUserByEmail(input.email);
-    if (!user) {
-        // Use generic message to prevent email enumeration
-        throw UnauthorizedError('Invalid email or password');
-    }
+  // 1. Find user (need password hash, so use findUserByEmail not safe version)
+  const user = await usersRepo.findUserByEmail(input.email);
+  if (!user) {
+    // Use generic message to prevent email enumeration
+    throw UnauthorizedError('Invalid email or password');
+  }
 
-    // 2. Verify password
-    const passwordValid = await comparePassword(input.password, user.passwordHash);
-    if (!passwordValid) {
-        throw UnauthorizedError('Invalid email or password');
-    }
+  // 2. Verify password
+  const passwordValid = await comparePassword(input.password, user.passwordHash);
+  if (!passwordValid) {
+    throw UnauthorizedError('Invalid email or password');
+  }
 
-    // 3. Check account status
-    if (user.status !== 'active') {
-        throw UnauthorizedError('Account is deactivated');
-    }
+  // 3. Check account status
+  if (user.status !== 'active') {
+    throw UnauthorizedError('Account is deactivated');
+  }
 
-    // 4. Generate tokens
-    const { accessToken, refreshToken, refreshJti } = generateTokenPair(user.id);
+  // 4. Generate tokens
+  const { accessToken, refreshToken } = generateTokenPair(user.id);
 
-    // Store hashed refresh token
-    const refreshTokenHash = await hashPassword(refreshToken);
-    await prisma.refreshToken.create({
-        data: {
-            userId: user.id,
-            tokenHash: refreshTokenHash,
-            expiresAt: getRefreshTokenExpiry(),
-            userAgent: meta.userAgent || null,
-            ipAddress: meta.ipAddress || null,
-        },
-    });
+  // Store hashed refresh token
+  const refreshTokenHash = await hashPassword(refreshToken);
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: refreshTokenHash,
+      expiresAt: getRefreshTokenExpiry(),
+      userAgent: meta.userAgent || null,
+      ipAddress: meta.ipAddress || null,
+    },
+  });
 
-    logger.info({ userId: user.id }, 'User logged in');
+  logger.info({ userId: user.id }, 'User logged in');
 
-    // 5. Return (safe user — no password hash)
-    return {
-        user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            status: user.status,
-            createdAt: user.createdAt,
-        },
-        tokens: { accessToken, refreshToken },
-    };
+  // 5. Return (safe user — no password hash)
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      status: user.status,
+      createdAt: user.createdAt,
+    },
+    tokens: { accessToken, refreshToken },
+  };
 }
 
 /**
@@ -201,65 +197,65 @@ export async function login(
  * @throws UnauthorizedError if the token is invalid, expired, or already used
  */
 export async function refresh(
-    refreshTokenStr: string,
-    meta: { userAgent?: string; ipAddress?: string } = {},
+  refreshTokenStr: string,
+  meta: { userAgent?: string; ipAddress?: string } = {},
 ): Promise<AuthTokens> {
-    // 1. Verify JWT
-    const payload = verifyRefreshToken(refreshTokenStr);
+  // 1. Verify JWT
+  const payload = verifyRefreshToken(refreshTokenStr);
 
-    // 2. Find all valid (non-revoked, non-expired) refresh tokens for user
-    const storedTokens = await prisma.refreshToken.findMany({
-        where: {
-            userId: payload.userId,
-            revoked: false,
-            expiresAt: { gt: new Date() },
-        },
-    });
+  // 2. Find all valid (non-revoked, non-expired) refresh tokens for user
+  const storedTokens = await prisma.refreshToken.findMany({
+    where: {
+      userId: payload.userId,
+      revoked: false,
+      expiresAt: { gt: new Date() },
+    },
+  });
 
-    if (storedTokens.length === 0) {
-        throw UnauthorizedError('No valid refresh tokens found');
+  if (storedTokens.length === 0) {
+    throw UnauthorizedError('No valid refresh tokens found');
+  }
+
+  // 3. Compare against stored hashes to find the matching token
+  let matchedTokenId: string | null = null;
+  for (const stored of storedTokens) {
+    const isMatch = await comparePassword(refreshTokenStr, stored.tokenHash);
+    if (isMatch) {
+      matchedTokenId = stored.id;
+      break;
     }
+  }
 
-    // 3. Compare against stored hashes to find the matching token
-    let matchedTokenId: string | null = null;
-    for (const stored of storedTokens) {
-        const isMatch = await comparePassword(refreshTokenStr, stored.tokenHash);
-        if (isMatch) {
-            matchedTokenId = stored.id;
-            break;
-        }
-    }
+  if (!matchedTokenId) {
+    // Token was valid JWT but not in DB — likely already rotated
+    // This could indicate token theft; consider revoking all tokens for safety
+    logger.warn({ userId: payload.userId }, 'Refresh token reuse detected');
+    throw UnauthorizedError('Refresh token has been revoked');
+  }
 
-    if (!matchedTokenId) {
-        // Token was valid JWT but not in DB — likely already rotated
-        // This could indicate token theft; consider revoking all tokens for safety
-        logger.warn({ userId: payload.userId }, 'Refresh token reuse detected');
-        throw UnauthorizedError('Refresh token has been revoked');
-    }
+  // 4. Delete the used token (one-time use)
+  await prisma.refreshToken.delete({
+    where: { id: matchedTokenId },
+  });
 
-    // 4. Delete the used token (one-time use)
-    await prisma.refreshToken.delete({
-        where: { id: matchedTokenId },
-    });
+  // 5. Generate new pair
+  const { accessToken, refreshToken } = generateTokenPair(payload.userId);
 
-    // 5. Generate new pair
-    const { accessToken, refreshToken, refreshJti } = generateTokenPair(payload.userId);
+  // 6. Store new refresh token
+  const newHash = await hashPassword(refreshToken);
+  await prisma.refreshToken.create({
+    data: {
+      userId: payload.userId,
+      tokenHash: newHash,
+      expiresAt: getRefreshTokenExpiry(),
+      userAgent: meta.userAgent || null,
+      ipAddress: meta.ipAddress || null,
+    },
+  });
 
-    // 6. Store new refresh token
-    const newHash = await hashPassword(refreshToken);
-    await prisma.refreshToken.create({
-        data: {
-            userId: payload.userId,
-            tokenHash: newHash,
-            expiresAt: getRefreshTokenExpiry(),
-            userAgent: meta.userAgent || null,
-            ipAddress: meta.ipAddress || null,
-        },
-    });
+  logger.info({ userId: payload.userId }, 'Tokens rotated');
 
-    logger.info({ userId: payload.userId }, 'Tokens rotated');
-
-    return { accessToken, refreshToken };
+  return { accessToken, refreshToken };
 }
 
 /**
@@ -273,29 +269,29 @@ export async function refresh(
  * @throws UnauthorizedError if the token is invalid
  */
 export async function logout(refreshTokenStr: string): Promise<void> {
-    // Verify the JWT first to get the userId
-    const payload = verifyRefreshToken(refreshTokenStr);
+  // Verify the JWT first to get the userId
+  const payload = verifyRefreshToken(refreshTokenStr);
 
-    // Find all tokens for this user and match
-    const storedTokens = await prisma.refreshToken.findMany({
-        where: {
-            userId: payload.userId,
-            revoked: false,
-        },
-    });
+  // Find all tokens for this user and match
+  const storedTokens = await prisma.refreshToken.findMany({
+    where: {
+      userId: payload.userId,
+      revoked: false,
+    },
+  });
 
-    for (const stored of storedTokens) {
-        const isMatch = await comparePassword(refreshTokenStr, stored.tokenHash);
-        if (isMatch) {
-            // Delete the matched token
-            await prisma.refreshToken.delete({
-                where: { id: stored.id },
-            });
-            logger.info({ userId: payload.userId }, 'User logged out');
-            return;
-        }
+  for (const stored of storedTokens) {
+    const isMatch = await comparePassword(refreshTokenStr, stored.tokenHash);
+    if (isMatch) {
+      // Delete the matched token
+      await prisma.refreshToken.delete({
+        where: { id: stored.id },
+      });
+      logger.info({ userId: payload.userId }, 'User logged out');
+      return;
     }
+  }
 
-    // Token not found — could already be logged out, which is fine
-    logger.info({ userId: payload.userId }, 'Logout called but token not found in DB');
+  // Token not found — could already be logged out, which is fine
+  logger.info({ userId: payload.userId }, 'Logout called but token not found in DB');
 }

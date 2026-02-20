@@ -15,9 +15,9 @@ import { ZodType, ZodError } from 'zod';
 import { sendError } from '../utils/api-response';
 
 interface ValidationSchemas {
-    body?: ZodType;
-    query?: ZodType;
-    params?: ZodType;
+  body?: ZodType;
+  query?: ZodType;
+  params?: ZodType;
 }
 
 /**
@@ -26,27 +26,32 @@ interface ValidationSchemas {
  * On success, replaces req.body/query/params with the parsed (sanitized) values.
  */
 export function validate(schemas: ValidationSchemas) {
-    return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
-        try {
-            if (schemas.body) {
-                req.body = await schemas.body.parseAsync(req.body);
-            }
-            if (schemas.query) {
-                req.query = (await schemas.query.parseAsync(req.query)) as typeof req.query;
-            }
-            if (schemas.params) {
-                req.params = (await schemas.params.parseAsync(req.params)) as typeof req.params;
-            }
-            next();
-        } catch (error) {
-            if (error instanceof ZodError) {
-                const formatted = error.issues
-                    .map((e) => `${(e.path as (string | number)[]).join('.')}: ${e.message}`)
-                    .join('; ');
-                sendError(_res, `Validation failed: ${formatted}`, 422);
-                return;
-            }
-            next(error);
-        }
-    };
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (schemas.body) {
+        req.body = await schemas.body.parseAsync(req.body);
+      }
+      if (schemas.query) {
+        const parsedQuery = await schemas.query.parseAsync(req.query);
+        // Clear existing keys and spread parsed
+        Object.keys(req.query).forEach((k) => delete req.query[k]);
+        Object.assign(req.query, parsedQuery);
+      }
+      if (schemas.params) {
+        const parsedParams = await schemas.params.parseAsync(req.params);
+        Object.keys(req.params).forEach((k) => delete req.params[k]);
+        Object.assign(req.params, parsedParams);
+      }
+      next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const formatted = error.issues
+          .map((e) => `${(e.path as (string | number)[]).join('.')}: ${e.message}`)
+          .join('; ');
+        sendError(_res, `Validation failed: ${formatted}`, 422);
+        return;
+      }
+      next(error);
+    }
+  };
 }

@@ -17,7 +17,7 @@ import * as usersService from './users.service';
  * Requires the `requireAuth` middleware to populate `req.user`.
  */
 export async function getMe(req: Request, res: Response): Promise<void> {
-    const userId = req.user!.userId;
-    const user = await usersService.getUserProfile(userId);
-    sendSuccess(res, user);
+  const userId = req.user!.userId;
+  const user = await usersService.getUserProfile(userId);
+  sendSuccess(res, user);
 }

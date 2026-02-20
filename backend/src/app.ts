@@ -24,6 +24,8 @@ import { disconnectPrisma } from './shared/db/prisma';
 // ---- Module Route Imports ----
 import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
+import houseRoutes from './modules/house/house.routes';
+import { houseTaskRoutes, taskRoutes } from './modules/tasks/tasks.routes';
 
 // ---- Create Express App ----
 const app = express();
@@ -37,22 +39,23 @@ app.use(cookieParser());
 
 // ---- Health Check ----
 app.get('/health', (_req, res) => {
-    res.status(200).json({
-        success: true,
-        data: {
-            status: 'healthy',
-            timestamp: new Date().toISOString(),
-            environment: env.NODE_ENV,
-        },
-        error: null,
-    });
+  res.status(200).json({
+    success: true,
+    data: {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      environment: env.NODE_ENV,
+    },
+    error: null,
+  });
 });
 
 // ---- Module Routes ----
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
-// Phase 3: app.use('/api/houses', houseRoutes);
-//          app.use('/api/tasks', taskRoutes);
+app.use('/api/houses', houseRoutes);
+app.use('/api/houses/:id/tasks', houseTaskRoutes);
+app.use('/api/tasks', taskRoutes);
 // Phase 4: app.use('/api/voting', votingRoutes);
 //          app.use('/api/leaderboard', leaderboardRoutes);
 
@@ -61,25 +64,25 @@ app.use(globalErrorHandler);
 
 // ---- Start Server ----
 const server = app.listen(env.PORT, () => {
-    logger.info(`🚀 Roomies backend running on port ${env.PORT} [${env.NODE_ENV}]`);
+  logger.info(`🚀 Roomies backend running on port ${env.PORT} [${env.NODE_ENV}]`);
 });
 
 // ---- Graceful Shutdown ----
 const gracefulShutdown = async (signal: string): Promise<void> => {
-    logger.info(`${signal} received. Starting graceful shutdown...`);
+  logger.info(`${signal} received. Starting graceful shutdown...`);
 
-    server.close(async () => {
-        logger.info('HTTP server closed.');
-        await disconnectPrisma();
-        logger.info('Graceful shutdown complete.');
-        process.exit(0);
-    });
+  server.close(async () => {
+    logger.info('HTTP server closed.');
+    await disconnectPrisma();
+    logger.info('Graceful shutdown complete.');
+    process.exit(0);
+  });
 
-    // Force exit if shutdown takes too long
-    setTimeout(() => {
-        logger.error('Forced shutdown — timeout exceeded.');
-        process.exit(1);
-    }, 10_000);
+  // Force exit if shutdown takes too long
+  setTimeout(() => {
+    logger.error('Forced shutdown — timeout exceeded.');
+    process.exit(1);
+  }, 10_000);
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -87,13 +90,13 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // ---- Unhandled Rejection / Uncaught Exception Handlers ----
 process.on('unhandledRejection', (reason: unknown) => {
-    logger.fatal({ reason }, 'Unhandled Promise Rejection');
-    process.exit(1);
+  logger.fatal({ reason }, 'Unhandled Promise Rejection');
+  process.exit(1);
 });
 
 process.on('uncaughtException', (error: Error) => {
-    logger.fatal({ error }, 'Uncaught Exception');
-    process.exit(1);
+  logger.fatal({ error }, 'Uncaught Exception');
+  process.exit(1);
 });
 
 export default app;

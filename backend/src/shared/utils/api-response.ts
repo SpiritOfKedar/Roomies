@@ -15,33 +15,33 @@ import { Response } from 'express';
  * Standard API response shape.
  */
 export interface ApiResponse<T = unknown> {
-    success: boolean;
-    data: T | null;
-    error: string | null;
+  success: boolean;
+  data: T | null;
+  error: string | null;
 }
 
 /**
  * Send a success response with data.
  */
 export function sendSuccess<T>(res: Response, data: T, statusCode = 200): void {
-    const body: ApiResponse<T> = {
-        success: true,
-        data,
-        error: null,
-    };
-    res.status(statusCode).json(body);
+  const body: ApiResponse<T> = {
+    success: true,
+    data,
+    error: null,
+  };
+  res.status(statusCode).json(body);
 }
 
 /**
  * Send an error response.
  */
 export function sendError(res: Response, error: string, statusCode = 400): void {
-    const body: ApiResponse<null> = {
-        success: false,
-        data: null,
-        error,
-    };
-    res.status(statusCode).json(body);
+  const body: ApiResponse<null> = {
+    success: false,
+    data: null,
+    error,
+  };
+  res.status(statusCode).json(body);
 }
 
 /**
@@ -49,30 +49,30 @@ export function sendError(res: Response, error: string, statusCode = 400): void 
  * Includes cursor/offset metadata for client pagination.
  */
 export interface PaginatedData<T> {
-    items: T[];
-    total: number;
-    limit: number;
-    offset: number;
-    hasMore: boolean;
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
 }
 
 export function sendPaginated<T>(
-    res: Response,
-    items: T[],
-    total: number,
-    limit: number,
-    offset: number,
+  res: Response,
+  items: T[],
+  total: number,
+  limit: number,
+  offset: number,
 ): void {
-    const body: ApiResponse<PaginatedData<T>> = {
-        success: true,
-        data: {
-            items,
-            total,
-            limit,
-            offset,
-            hasMore: offset + limit < total,
-        },
-        error: null,
-    };
-    res.status(200).json(body);
+  const body: ApiResponse<PaginatedData<T>> = {
+    success: true,
+    data: {
+      items,
+      total,
+      limit,
+      offset,
+      hasMore: offset + limit < total,
+    },
+    error: null,
+  };
+  res.status(200).json(body);
 }

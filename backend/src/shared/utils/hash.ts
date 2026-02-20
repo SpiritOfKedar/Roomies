@@ -21,7 +21,7 @@ import { env } from './env';
  * @returns The bcrypt hash string
  */
 export async function hashPassword(plaintext: string): Promise<string> {
-    return bcrypt.hash(plaintext, env.BCRYPT_SALT_ROUNDS);
+  return bcrypt.hash(plaintext, env.BCRYPT_SALT_ROUNDS);
 }
 
 /**
@@ -33,5 +33,5 @@ export async function hashPassword(plaintext: string): Promise<string> {
  * @returns True if the password matches, false otherwise
  */
 export async function comparePassword(plaintext: string, hash: string): Promise<boolean> {
-    return bcrypt.compare(plaintext, hash);
+  return bcrypt.compare(plaintext, hash);
 }

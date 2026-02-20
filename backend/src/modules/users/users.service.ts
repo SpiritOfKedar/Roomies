@@ -22,9 +22,9 @@ import type { SafeUser } from './users.repository';
  * @returns Safe user record (no password hash)
  */
 export async function getUserProfile(userId: string): Promise<SafeUser> {
-    const user = await usersRepo.findUserById(userId);
-    if (!user) {
-        throw NotFoundError('User');
-    }
-    return user;
+  const user = await usersRepo.findUserById(userId);
+  if (!user) {
+    throw NotFoundError('User');
+  }
+  return user;
 }

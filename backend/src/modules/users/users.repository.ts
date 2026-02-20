@@ -16,27 +16,27 @@ import { prisma } from '../../shared/db/prisma';
 
 /** Fields required to create a new user */
 export interface CreateUserData {
-    name: string;
-    email: string;
-    passwordHash: string;
+  name: string;
+  email: string;
+  passwordHash: string;
 }
 
 /** Safe user projection (excludes password hash) */
 export interface SafeUser {
-    id: string;
-    name: string;
-    email: string;
-    status: string;
-    createdAt: Date;
+  id: string;
+  name: string;
+  email: string;
+  status: string;
+  createdAt: Date;
 }
 
 /** Select clause that excludes the password hash from query results */
 const SAFE_USER_SELECT = {
-    id: true,
-    name: true,
-    email: true,
-    status: true,
-    createdAt: true,
+  id: true,
+  name: true,
+  email: true,
+  status: true,
+  createdAt: true,
 } as const;
 
 // ---- Repository Functions ----
@@ -49,14 +49,14 @@ const SAFE_USER_SELECT = {
  * @throws Prisma P2002 if email already exists (caught by global error handler)
  */
 export async function createUser(data: CreateUserData): Promise<SafeUser> {
-    return prisma.user.create({
-        data: {
-            name: data.name,
-            email: data.email,
-            passwordHash: data.passwordHash,
-        },
-        select: SAFE_USER_SELECT,
-    });
+  return prisma.user.create({
+    data: {
+      name: data.name,
+      email: data.email,
+      passwordHash: data.passwordHash,
+    },
+    select: SAFE_USER_SELECT,
+  });
 }
 
 /**
@@ -67,9 +67,9 @@ export async function createUser(data: CreateUserData): Promise<SafeUser> {
  * @returns Full user record or null if not found
  */
 export async function findUserByEmail(email: string) {
-    return prisma.user.findUnique({
-        where: { email },
-    });
+  return prisma.user.findUnique({
+    where: { email },
+  });
 }
 
 /**
@@ -80,10 +80,10 @@ export async function findUserByEmail(email: string) {
  * @returns Safe user record or null if not found
  */
 export async function findUserById(id: string): Promise<SafeUser | null> {
-    return prisma.user.findUnique({
-        where: { id },
-        select: SAFE_USER_SELECT,
-    });
+  return prisma.user.findUnique({
+    where: { id },
+    select: SAFE_USER_SELECT,
+  });
 }
 
 /**
@@ -94,8 +94,8 @@ export async function findUserById(id: string): Promise<SafeUser | null> {
  * @returns True if the email is already registered
  */
 export async function emailExists(email: string): Promise<boolean> {
-    const count = await prisma.user.count({
-        where: { email },
-    });
-    return count > 0;
+  const count = await prisma.user.count({
+    where: { email },
+  });
+  return count > 0;
 }

@@ -20,14 +20,14 @@ import type { RegisterInput, LoginInput, RefreshInput } from './auth.schema';
  * Creates a new user account and returns tokens.
  */
 export async function register(req: Request, res: Response): Promise<void> {
-    const input = req.body as RegisterInput;
+  const input = req.body as RegisterInput;
 
-    const result = await authService.register(input, {
-        userAgent: req.headers['user-agent'],
-        ipAddress: req.ip,
-    });
+  const result = await authService.register(input, {
+    userAgent: req.headers['user-agent'],
+    ipAddress: req.ip,
+  });
 
-    sendSuccess(res, result, 201);
+  sendSuccess(res, result, 201);
 }
 
 /**
@@ -35,14 +35,14 @@ export async function register(req: Request, res: Response): Promise<void> {
  * Authenticates a user and returns tokens.
  */
 export async function login(req: Request, res: Response): Promise<void> {
-    const input = req.body as LoginInput;
+  const input = req.body as LoginInput;
 
-    const result = await authService.login(input, {
-        userAgent: req.headers['user-agent'],
-        ipAddress: req.ip,
-    });
+  const result = await authService.login(input, {
+    userAgent: req.headers['user-agent'],
+    ipAddress: req.ip,
+  });
 
-    sendSuccess(res, result);
+  sendSuccess(res, result);
 }
 
 /**
@@ -50,14 +50,14 @@ export async function login(req: Request, res: Response): Promise<void> {
  * Rotates the refresh token and issues a new token pair.
  */
 export async function refresh(req: Request, res: Response): Promise<void> {
-    const { refreshToken } = req.body as RefreshInput;
+  const { refreshToken } = req.body as RefreshInput;
 
-    const tokens = await authService.refresh(refreshToken, {
-        userAgent: req.headers['user-agent'],
-        ipAddress: req.ip,
-    });
+  const tokens = await authService.refresh(refreshToken, {
+    userAgent: req.headers['user-agent'],
+    ipAddress: req.ip,
+  });
 
-    sendSuccess(res, tokens);
+  sendSuccess(res, tokens);
 }
 
 /**
@@ -66,9 +66,9 @@ export async function refresh(req: Request, res: Response): Promise<void> {
  * Returns 200 regardless of whether the token was found (idempotent).
  */
 export async function logout(req: Request, res: Response): Promise<void> {
-    const { refreshToken } = req.body as RefreshInput;
+  const { refreshToken } = req.body as RefreshInput;
 
-    await authService.logout(refreshToken);
+  await authService.logout(refreshToken);
 
-    sendSuccess(res, { message: 'Logged out successfully' });
+  sendSuccess(res, { message: 'Logged out successfully' });
 }

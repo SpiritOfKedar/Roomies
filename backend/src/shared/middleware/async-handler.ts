@@ -20,7 +20,7 @@ type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Pr
  * Wraps an async route handler to catch and forward errors to next().
  */
 export function asyncHandler(fn: AsyncRouteHandler) {
-    return (req: Request, res: Response, next: NextFunction): void => {
-        Promise.resolve(fn(req, res, next)).catch(next);
-    };
+  return (req: Request, res: Response, next: NextFunction): void => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
 }
