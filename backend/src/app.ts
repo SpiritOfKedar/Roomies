@@ -26,6 +26,11 @@ import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
 import houseRoutes from './modules/house/house.routes';
 import { houseTaskRoutes, taskRoutes } from './modules/tasks/tasks.routes';
+import { votingRoutes } from './modules/voting/voting.routes';
+import { leaderboardRoutes } from './modules/leaderboard/leaderboard.routes';
+
+// ---- Background Jobs Imports ----
+import { startTaskSweeper } from './shared/jobs/task-sweeper.job';
 
 // ---- Create Express App ----
 const app = express();
@@ -56,8 +61,8 @@ app.use('/api/users', usersRoutes);
 app.use('/api/houses', houseRoutes);
 app.use('/api/houses/:id/tasks', houseTaskRoutes);
 app.use('/api/tasks', taskRoutes);
-// Phase 4: app.use('/api/voting', votingRoutes);
-//          app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/tasks', votingRoutes);
+app.use('/api/houses', leaderboardRoutes); // /api/houses/:id/leaderboard
 
 // ---- Global Error Handler (must be registered last) ----
 app.use(globalErrorHandler);
@@ -65,6 +70,7 @@ app.use(globalErrorHandler);
 // ---- Start Server ----
 const server = app.listen(env.PORT, () => {
   logger.info(`🚀 Roomies backend running on port ${env.PORT} [${env.NODE_ENV}]`);
+  startTaskSweeper();
 });
 
 // ---- Graceful Shutdown ----
