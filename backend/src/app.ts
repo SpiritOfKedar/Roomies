@@ -21,6 +21,10 @@ import { logger } from './shared/utils/logger';
 import { globalErrorHandler } from './shared/middleware/error-handler';
 import { disconnectPrisma } from './shared/db/prisma';
 
+// ---- Module Route Imports ----
+import authRoutes from './modules/auth/auth.routes';
+import usersRoutes from './modules/users/users.routes';
+
 // ---- Create Express App ----
 const app = express();
 
@@ -44,8 +48,9 @@ app.get('/health', (_req, res) => {
     });
 });
 
-// ---- Module Routes (will be registered in subsequent phases) ----
-// Phase 2: app.use('/api/auth', authRoutes);
+// ---- Module Routes ----
+app.use('/api/auth', authRoutes);
+app.use('/api/users', usersRoutes);
 // Phase 3: app.use('/api/houses', houseRoutes);
 //          app.use('/api/tasks', taskRoutes);
 // Phase 4: app.use('/api/voting', votingRoutes);
