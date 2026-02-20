@@ -1,0 +1,206 @@
+// =============================================================================
+// Roomies Backend — Prisma Schema
+// =============================================================================
+// Fairness-Driven Task Allocation and Validation System
+// All tables use UUID primary keys for distributed scalability.
+// Indexes are placed on house_id columns for house-scoped query performance.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// USERS
+// =============================================================================
+// Core identity table. Stores credentials and account status.
+// The `status` field supports soft-delete/deactivation patterns.
+// =============================================================================
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @db.Text
+  email         String   @unique @db.Text
+  passwordHash  String   @map("password_hash") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  status        String   @default("active") @db.Text
+
+  // ---------- Relations ----------
+  housesCreated  House[]        @relation("HouseCreator")
+  memberships    HouseMember[]
+  tasksAssigned  Task[]
+  votes          Vote[]
+  penalties      Penalty[]
+  refreshTokens  RefreshToken[]
+
+  @@map("users")
+}
+
+// =============================================================================
+// HOUSES
+// =============================================================================
+// Represents a shared living unit. Each house scopes all operations.
+// `currentIndex` drives the round-robin task rotation engine.
+// CRITICAL: This row must be locked (SELECT FOR UPDATE) during task assignment
+// to prevent race conditions on the rotation index.
+// =============================================================================
+model House {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @db.Text
+  createdBy    String   @map("created_by") @db.Uuid
+  currentIndex Int      @default(0) @map("current_index")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // ---------- Relations ----------
+  creator  User          @relation("HouseCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  members  HouseMember[]
+  tasks    Task[]
+
+  @@map("houses")
+}
+
+// =============================================================================
+// HOUSE_MEMBERS
+// =============================================================================
+// Junction table linking users to houses with role-based access.
+// `status` allows soft-removal (inactive) without deleting data.
+// Members are ordered by `joinedAt` for deterministic rotation order.
+// =============================================================================
+model HouseMember {
+  id       String   @id @default(uuid()) @db.Uuid
+  houseId  String   @map("house_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  role     String   @default("member") @db.Text
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz
+  status   String   @default("active") @db.Text
+
+  // ---------- Relations ----------
+  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ---------- Indexes ----------
+  // Prevent duplicate active memberships per house
+  @@unique([houseId, userId])
+  // Fast lookups for house-scoped queries
+  @@index([houseId])
+  @@index([userId])
+  @@map("house_members")
+}
+
+// =============================================================================
+// TASKS
+// =============================================================================
+// Core work unit. Assigned to a user within a house via the rotation engine.
+// Status transitions: pending → submitted → approved/rejected
+//                     pending → expired (via background job)
+// Future extension fields (image_url, ai_score, ai_verdict) are included
+// but NOT populated by current logic.
+// =============================================================================
+model Task {
+  id         String   @id @default(uuid()) @db.Uuid
+  houseId    String   @map("house_id") @db.Uuid
+  assignedTo String   @map("assigned_to") @db.Uuid
+  title      String   @db.Text
+  status     String   @default("pending") @db.Text
+  deadline   DateTime @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // ---------- Future Extension Fields ----------
+  imageUrl   String?  @map("image_url") @db.Text
+  aiScore    Float?   @map("ai_score")
+  aiVerdict  String?  @map("ai_verdict") @db.Text
+
+  // ---------- Relations ----------
+  house      House     @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  assignee   User      @relation(fields: [assignedTo], references: [id], onDelete: Cascade)
+  votes      Vote[]
+  penalties  Penalty[]
+
+  // ---------- Indexes ----------
+  @@index([houseId])
+  @@index([assignedTo])
+  @@index([status])
+  @@index([deadline])
+  @@map("tasks")
+}
+
+// =============================================================================
+// VOTES
+// =============================================================================
+// Records per-user approval/rejection decisions on submitted tasks.
+// The UNIQUE constraint on (task_id, user_id) enforces one vote per user
+// per task at the database level — preventing double-voting even under
+// concurrent requests.
+// =============================================================================
+model Vote {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @map("task_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  vote      String   @db.Text // 'approve' | 'reject'
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // ---------- Relations ----------
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ---------- Constraints ----------
+  // One vote per user per task — enforced at DB level
+  @@unique([taskId, userId])
+  @@index([taskId])
+  @@map("votes")
+}
+
+// =============================================================================
+// PENALTIES
+// =============================================================================
+// Tracks penalty events from rejected tasks or expired deadlines.
+// Points and fines are stored per-event; aggregated scores are computed
+// dynamically via SQL (never stored as derived state).
+// =============================================================================
+model Penalty {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  taskId     String   @map("task_id") @db.Uuid
+  points     Int      @default(10)
+  fineAmount Decimal  @default(50) @map("fine_amount") @db.Decimal(10, 2)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // ---------- Relations ----------
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // ---------- Indexes ----------
+  @@index([userId])
+  @@index([taskId])
+  @@map("penalties")
+}
+
+// =============================================================================
+// REFRESH TOKENS
+// =============================================================================
+// Stores hashed refresh tokens for JWT rotation.
+// Supports multiple device sessions per user.
+// Tokens are invalidated on logout and rotated on refresh.
+// =============================================================================
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @map("token_hash") @db.Text
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  revoked   Boolean  @default(false)
+  userAgent String?  @map("user_agent") @db.Text
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+
+  // ---------- Relations ----------
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ---------- Indexes ----------
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
