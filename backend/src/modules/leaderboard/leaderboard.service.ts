@@ -33,14 +33,18 @@ export async function getHouseLeaderboard(houseId: string, userId: string) {
                 SELECT SUM(p.points) 
                 FROM penalties p 
                 JOIN tasks t2 ON p.task_id = t2.id 
-                WHERE p.user_id = u.id AND t2.house_id = hm.house_id
+                WHERE p.user_id = u.id
+                  AND t2.house_id = hm.house_id
+                  AND p.status = 'unpaid'
             ), 0) AS total_penalty_points,
             (COALESCE(SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END), 0) * 10) 
             - COALESCE((
                 SELECT SUM(p.points) 
                 FROM penalties p 
                 JOIN tasks t2 ON p.task_id = t2.id 
-                WHERE p.user_id = u.id AND t2.house_id = hm.house_id
+                WHERE p.user_id = u.id
+                  AND t2.house_id = hm.house_id
+                  AND p.status = 'unpaid'
             ), 0) AS score
         FROM house_members hm
         JOIN users u ON hm.user_id = u.id

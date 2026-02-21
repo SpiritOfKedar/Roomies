@@ -10,7 +10,12 @@
 import { Request, Response } from 'express';
 import { sendSuccess } from '../../shared/utils/api-response';
 import * as houseService from './house.service';
-import type { CreateHouseInput, HouseIdParams } from './house.schema';
+import type {
+  CreateHouseInput,
+  HouseIdParams,
+  MemberParams,
+  UpdateMemberStatusInput,
+} from './house.schema';
 
 /**
  * POST /api/houses
@@ -61,4 +66,19 @@ export async function getUserHouses(req: Request, res: Response): Promise<void> 
   const houses = await houseService.getUserHouses(userId);
 
   sendSuccess(res, houses);
+}
+
+/**
+ * PATCH /api/houses/:id/members/:userId
+ * Update the status of a house member ('active' | 'on_leave' | 'inactive').
+ * Admin only. Setting a member to 'inactive' automatically expires their pending tasks.
+ */
+export async function updateMemberStatus(req: Request, res: Response): Promise<void> {
+  const requestingUserId = req.user!.userId;
+  const { id: houseId, userId } = req.params as unknown as MemberParams;
+  const { status } = req.body as UpdateMemberStatusInput;
+
+  const member = await houseService.updateMemberStatus(requestingUserId, houseId, userId, status);
+
+  sendSuccess(res, member);
 }

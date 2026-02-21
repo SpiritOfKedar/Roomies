@@ -53,3 +53,30 @@ export const paginationQuerySchema = z.object({
 });
 
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
+
+// ---- Admin Task Update ----
+
+/**
+ * Schema for PATCH /api/houses/:id/tasks/:taskId
+ * At least one field must be supplied.
+ */
+export const updateTaskSchema = z
+  .object({
+    title: z.string().min(2).max(200).trim().optional(),
+    deadline: z.string().datetime({ message: 'Deadline must be a valid ISO 8601 datetime' }).optional(),
+    rewardPoints: z.number().int().positive().optional(),
+    penaltyFine: z.number().positive().optional(),
+  })
+  .refine((obj) => Object.keys(obj).length > 0, {
+    message: 'At least one field must be provided for update',
+  });
+
+export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
+
+/** Compound params for routes mounted under /api/houses/:id/tasks/:taskId */
+export const houseTaskParamsSchema = z.object({
+  id: z.string().uuid('Invalid house ID'),
+  taskId: z.string().uuid('Invalid task ID'),
+});
+
+export type HouseTaskParams = z.infer<typeof houseTaskParamsSchema>;

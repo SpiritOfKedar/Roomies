@@ -35,3 +35,18 @@ export const houseIdParamsSchema = z.object({
 });
 
 export type HouseIdParams = z.infer<typeof houseIdParamsSchema>;
+
+// ---- Member Status Update ----
+
+export const updateMemberStatusBodySchema = z.object({
+  status: z.enum(['active', 'on_leave', 'inactive']),
+});
+
+export type UpdateMemberStatusInput = z.infer<typeof updateMemberStatusBodySchema>;
+
+export const memberParamsSchema = z.object({
+  id: z.string().uuid('Invalid house ID'),
+  userId: z.string().uuid('Invalid user ID'),
+});
+
+export type MemberParams = z.infer<typeof memberParamsSchema>;

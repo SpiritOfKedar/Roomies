@@ -36,6 +36,7 @@ import { AppError, NotFoundError, ForbiddenError } from '../../shared/utils/app-
 import * as tasksRepo from './tasks.repository';
 import * as houseService from '../house/house.service';
 import { logger } from '../../shared/utils/logger';
+import type { UpdateTaskInput } from './tasks.schema';
 
 // ---- Service Functions ----
 
@@ -221,4 +222,69 @@ export async function getTasksByHouse(
   const { tasks, total } = await tasksRepo.getTasksByHouse(houseId, limit, offset);
 
   return { tasks, total, limit, offset };
+}
+
+/**
+ * Admin mutation of a pending task.
+ *
+ * Guards:
+ *   - Requesting user must be an active house admin.
+ *   - Task must exist and belong to the given house.
+ *   - Task must be in 'pending' state (completed/rejected tasks are immutable).
+ *   - If deadline is being updated, it must be in the future.
+ *
+ * @param requestingUserId - The admin user's UUID
+ * @param houseId          - The house UUID (ownership scope)
+ * @param taskId           - The task UUID to update
+ * @param data             - Partial update object
+ * @returns The updated task record
+ *
+ * @throws ForbiddenError   if requester is not an admin
+ * @throws NotFoundError    if task doesn't exist or is in a different house
+ * @throws AppError(400)    if task is not in 'pending' status
+ * @throws AppError(400)    if the provided deadline is in the past
+ */
+export async function updateTask(
+  requestingUserId: string,
+  houseId: string,
+  taskId: string,
+  data: UpdateTaskInput,
+) {
+  // 1. Admin-only guard
+  await houseService.verifyAdminRole(houseId, requestingUserId);
+
+  // 2. Task existence + house ownership check
+  const task = await tasksRepo.findTaskById(taskId);
+  if (!task || task.houseId !== houseId) {
+    throw NotFoundError('Task');
+  }
+
+  // 3. Immutability guard — only 'pending' tasks are mutable
+  if (task.status !== 'pending') {
+    throw new AppError(
+      `Cannot modify task in state '${task.status}'. Only 'pending' tasks are mutable.`,
+      400,
+    );
+  }
+
+  // 4. Deadline validation (if being updated)
+  let deadline: Date | undefined;
+  if (data.deadline) {
+    deadline = new Date(data.deadline);
+    if (deadline <= new Date()) {
+      throw new AppError('New deadline must be in the future', 400);
+    }
+  }
+
+  // 5. Apply update
+  const updated = await tasksRepo.updateTaskFields(taskId, {
+    ...(data.title !== undefined && { title: data.title }),
+    ...(deadline !== undefined && { deadline }),
+    ...(data.rewardPoints !== undefined && { rewardPoints: data.rewardPoints }),
+    ...(data.penaltyFine !== undefined && { penaltyFine: data.penaltyFine }),
+  });
+
+  logger.info({ taskId, houseId, requestingUserId, changes: data }, 'Admin mutated pending task');
+
+  return updated;
 }

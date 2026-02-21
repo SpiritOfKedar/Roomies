@@ -95,21 +95,29 @@ model HouseMember {
 // TASKS
 // =============================================================================
 // Core work unit. Assigned to a user within a house via the rotation engine.
-// Status transitions: pending → submitted → approved/rejected
+// Status transitions: pending → submitted → completed/rejected/disputed
 //                     pending → expired (via background job)
-// Future extension fields (image_url, ai_score, ai_verdict) are included
-// but NOT populated by current logic.
+// Allowed status values: 'pending' | 'submitted' | 'completed' | 'rejected'
+//                        | 'expired' | 'disputed'
 // =============================================================================
 model Task {
-  id         String   @id @default(uuid()) @db.Uuid
-  houseId    String   @map("house_id") @db.Uuid
-  assignedTo String   @map("assigned_to") @db.Uuid
-  title      String   @db.Text
-  status     String   @default("pending") @db.Text
-  deadline   DateTime @db.Timestamptz
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id           String   @id @default(uuid()) @db.Uuid
+  houseId      String   @map("house_id") @db.Uuid
+  assignedTo   String   @map("assigned_to") @db.Uuid
+  title        String   @db.Text
+  status       String   @default("pending") @db.Text
+  deadline     DateTime @db.Timestamptz
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  // ---------- Future Extension Fields ----------
+  // ---------- Gamification & Weighting ----------
+  rewardPoints Int      @default(10) @map("reward_points")
+  penaltyFine  Decimal  @default(50.0) @map("penalty_fine") @db.Decimal(10, 2)
+
+  // ---------- Recurring Task Fields ----------
+  isRecurring   Boolean @default(false) @map("is_recurring")
+  cronSchedule  String? @map("cron_schedule") @db.Text
+
+  // ---------- Proof & AI Fields ----------
   imageUrl   String?  @map("image_url") @db.Text
   aiScore    Float?   @map("ai_score")
   aiVerdict  String?  @map("ai_verdict") @db.Text
@@ -160,6 +168,7 @@ model Vote {
 // Tracks penalty events from rejected tasks or expired deadlines.
 // Points and fines are stored per-event; aggregated scores are computed
 // dynamically via SQL (never stored as derived state).
+// Allowed status values: 'unpaid' | 'settled' | 'forgiven'
 // =============================================================================
 model Penalty {
   id         String   @id @default(uuid()) @db.Uuid
@@ -167,6 +176,7 @@ model Penalty {
   taskId     String   @map("task_id") @db.Uuid
   points     Int      @default(10)
   fineAmount Decimal  @default(50) @map("fine_amount") @db.Decimal(10, 2)
+  status     String   @default("unpaid") @db.Text
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   // ---------- Relations ----------

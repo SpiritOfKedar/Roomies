@@ -17,7 +17,12 @@ import { requireAuth } from '../../shared/middleware/require-auth';
 import { validate } from '../../shared/middleware/validate';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import * as houseController from './house.controller';
-import { createHouseSchema, houseIdParamsSchema } from './house.schema';
+import {
+  createHouseSchema,
+  houseIdParamsSchema,
+  memberParamsSchema,
+  updateMemberStatusBodySchema,
+} from './house.schema';
 
 const router = Router();
 
@@ -54,6 +59,17 @@ router.post(
   '/:id/join',
   validate({ params: houseIdParamsSchema }),
   asyncHandler(houseController.joinHouse),
+);
+
+/**
+ * PATCH /api/houses/:id/members/:userId
+ * Update a member's status: 'active' | 'on_leave' | 'inactive'.
+ * Admin only. Setting to 'inactive' auto-expires pending tasks.
+ */
+router.patch(
+  '/:id/members/:userId',
+  validate({ params: memberParamsSchema, body: updateMemberStatusBodySchema }),
+  asyncHandler(houseController.updateMemberStatus),
 );
 
 export default router;

@@ -26,7 +26,14 @@ export async function castVote(userId: string, taskId: string, voteType: 'approv
   // 1. Fetch Task
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { id: true, houseId: true, assignedTo: true, status: true },
+    select: {
+      id: true,
+      houseId: true,
+      assignedTo: true,
+      status: true,
+      rewardPoints: true,
+      penaltyFine: true,
+    },
   });
 
   if (!task) {
@@ -98,6 +105,17 @@ export async function castVote(userId: string, taskId: string, voteType: 'approv
       // Majority is strictly > 50%
       const majorityThreshold = Math.floor(eligibleVoters / 2) + 1;
 
+      // Per-task weighting (future-proofed gamification values)
+      const taskRewardPoints = task.rewardPoints;
+      const taskPenaltyFine = Number(task.penaltyFine);
+
+      // ── 2-PLAYER DICTATORSHIP GUARD ──────────────────────────────────────
+      // When a house has exactly 2 active members, only 1 eligible voter
+      // exists. A single reject vote MUST NOT unilaterally fine the assignee;
+      // instead we mark the task 'disputed' to require manual resolution.
+      // An approve vote still resolves the task normally.
+      const isTwoPlayerHouse = totalActiveMembers === 2;
+
       let finalStatus = task.status;
       let actionMsg = 'Vote cast, threshold not met';
 
@@ -110,25 +128,40 @@ export async function castVote(userId: string, taskId: string, voteType: 'approv
           where: { id: taskId, status: 'submitted' },
           data: { status: 'completed' },
         });
+
+        // reward_points are stored on the task for future gamification reads;
+        // no write needed here — the field is already set at task creation.
+        void taskRewardPoints;
       } else if (rejectedVotes >= majorityThreshold) {
-        finalStatus = 'rejected';
-        actionMsg = 'Task rejected by peers';
+        if (isTwoPlayerHouse) {
+          // 2-player special case: flag as disputed, no penalty applied
+          finalStatus = 'disputed';
+          actionMsg = 'Task disputed (2-player house — unilateral rejection blocked)';
 
-        const updateResult = await tx.task.updateMany({
-          where: { id: taskId, status: 'submitted' },
-          data: { status: 'rejected' },
-        });
+          await tx.task.updateMany({
+            where: { id: taskId, status: 'submitted' },
+            data: { status: 'disputed' },
+          });
+        } else {
+          finalStatus = 'rejected';
+          actionMsg = 'Task rejected by peers';
 
-        if (updateResult.count > 0) {
-          // Apply Penalty using the exact requested transaction flow ONLY if this transaction changed the status
-          await penaltyService.applyPenalty(
-            tx,
-            task.assignedTo,
-            taskId,
-            'Task proof rejected by majority vote',
-            10,
-            50.0,
-          );
+          const updateResult = await tx.task.updateMany({
+            where: { id: taskId, status: 'submitted' },
+            data: { status: 'rejected' },
+          });
+
+          if (updateResult.count > 0) {
+            // Apply Penalty using the exact requested transaction flow ONLY if this transaction changed the status
+            await penaltyService.applyPenalty(
+              tx,
+              task.assignedTo,
+              taskId,
+              'Task proof rejected by majority vote',
+              taskRewardPoints,
+              taskPenaltyFine,
+            );
+          }
         }
       } else if (approvedVotes + rejectedVotes === eligibleVoters) {
         // TIE BREAKER: All eligible voters have voted, but neither reached absolute majority.
@@ -148,8 +181,8 @@ export async function castVote(userId: string, taskId: string, voteType: 'approv
             task.assignedTo,
             taskId,
             'Task proof rejected due to tied votes (failed to reach majority)',
-            10,
-            50.0,
+            taskRewardPoints,
+            taskPenaltyFine,
           );
         }
       }

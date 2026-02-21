@@ -164,3 +164,70 @@ export async function verifyMembership(houseId: string, userId: string): Promise
     throw ForbiddenError('You are not an active member of this house');
   }
 }
+
+/**
+ * Verify that a user is an active ADMIN of a house.
+ * Used by privileged operations (e.g. penalty settlement).
+ *
+ * @param houseId - The house UUID
+ * @param userId - The user UUID
+ * @throws ForbiddenError if user is not an active admin of the house
+ */
+export async function verifyAdminRole(houseId: string, userId: string): Promise<void> {
+  const isAdmin = await houseRepo.isActiveAdmin(houseId, userId);
+  if (!isAdmin) {
+    throw ForbiddenError('Only a house admin can perform this action');
+  }
+}
+
+/**
+ * Update a house member's status (vacation mode / offboarding).
+ *
+ * Allowed transitions:
+ *   active  → on_leave   (Vacation Mode: member is skipped in rotation)
+ *   active  → inactive   (Offboarding: member is removed, pending tasks expired)
+ *   on_leave → active    (Return from vacation)
+ *
+ * When status becomes 'inactive' all 'pending' tasks assigned to the member
+ * in this house are automatically expired to prevent queue blockage.
+ *
+ * @param requestingUserId - Must be an active admin of the house
+ * @param houseId          - The house UUID
+ * @param targetUserId     - The member whose status is being changed
+ * @param status           - New status value
+ * @returns Updated membership record
+ *
+ * @throws ForbiddenError  if requester is not admin
+ * @throws NotFoundError   if target is not a member of the house
+ */
+export async function updateMemberStatus(
+  requestingUserId: string,
+  houseId: string,
+  targetUserId: string,
+  status: 'active' | 'on_leave' | 'inactive',
+): Promise<ReturnType<typeof houseRepo.updateMemberStatus>> {
+  // 1. Requester must be an active admin
+  await verifyAdminRole(houseId, requestingUserId);
+
+  // 2. Target user must be an existing member of the house
+  const member = await houseRepo.findMemberRecord(houseId, targetUserId);
+  if (!member) {
+    throw NotFoundError('House member');
+  }
+
+  // 3. Update the membership status
+  const updated = await houseRepo.updateMemberStatus(houseId, targetUserId, status);
+
+  // 4. Offboarding side-effect: expire all pending tasks so the queue never blocks
+  if (status === 'inactive') {
+    const expiredCount = await houseRepo.expirePendingTasksForMember(houseId, targetUserId);
+    logger.info(
+      { houseId, targetUserId, expiredCount },
+      'Member deactivated — pending tasks expired',
+    );
+  }
+
+  logger.info({ houseId, targetUserId, status, requestingUserId }, 'Member status updated');
+
+  return updated;
+}

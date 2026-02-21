@@ -29,10 +29,17 @@ import houseRoutes from './modules/house/house.routes';
 import { houseTaskRoutes, taskRoutes } from './modules/tasks/tasks.routes';
 import { votingRoutes } from './modules/voting/voting.routes';
 import { leaderboardRoutes } from './modules/leaderboard/leaderboard.routes';
+import { penaltyRoutes } from './modules/penalty/penalty.routes';
 
 // ---- Background Jobs Imports ----
 import { scheduleTaskSweeperJob, closeQueue } from './shared/jobs/queue';
 import { startTaskSweeperWorker, closeWorker } from './shared/jobs/worker';
+import {
+  scheduleRecurringTasksJob,
+  startRecurringTasksWorker,
+  closeRecurringTasksWorker,
+  closeRecurringTasksQueue,
+} from './shared/jobs/recurring-tasks.worker';
 
 // ---- Create Express App ----
 const app = express();
@@ -67,49 +74,60 @@ app.use('/api/houses/:id/tasks', houseTaskRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/tasks', votingRoutes);
 app.use('/api/houses', leaderboardRoutes); // /api/houses/:id/leaderboard
+app.use('/api/houses/:houseId/penalties', penaltyRoutes); // /api/houses/:houseId/penalties/:penaltyId/settle
 
 // ---- Global Error Handler (must be registered last) ----
 app.use(globalErrorHandler);
 
-// ---- Start Server ----
-const server = app.listen(env.PORT, () => {
-  logger.info(`🚀 Roomies backend running on port ${env.PORT} [${env.NODE_ENV}]`);
-  scheduleTaskSweeperJob().catch((err) => logger.error({ err }, 'Failed to schedule task sweeper'));
-  startTaskSweeperWorker();
-});
+export default app;
 
-// ---- Graceful Shutdown ----
-const gracefulShutdown = async (signal: string): Promise<void> => {
-  logger.info(`${signal} received. Starting graceful shutdown...`);
-
-  server.close(async () => {
-    logger.info('HTTP server closed.');
-    await closeQueue();
-    await closeWorker();
-    await disconnectPrisma();
-    logger.info('Graceful shutdown complete.');
-    process.exit(0);
+// ---- Start Server (skipped in test mode so Supertest manages its own port) ----
+if (env.NODE_ENV !== 'test') {
+  const server = app.listen(env.PORT, () => {
+    logger.info(`🚀 Roomies backend running on port ${env.PORT} [${env.NODE_ENV}]`);
+    scheduleTaskSweeperJob().catch((err) =>
+      logger.error({ err }, 'Failed to schedule task sweeper'),
+    );
+    startTaskSweeperWorker();
+    scheduleRecurringTasksJob().catch((err) =>
+      logger.error({ err }, 'Failed to schedule recurring tasks job'),
+    );
+    startRecurringTasksWorker();
   });
 
-  // Force exit if shutdown takes too long
-  setTimeout(() => {
-    logger.error('Forced shutdown — timeout exceeded.');
+  // ---- Graceful Shutdown ----
+  const gracefulShutdown = async (signal: string): Promise<void> => {
+    logger.info(`${signal} received. Starting graceful shutdown...`);
+
+    server.close(async () => {
+      logger.info('HTTP server closed.');
+      await closeQueue();
+      await closeWorker();
+      await closeRecurringTasksQueue();
+      await closeRecurringTasksWorker();
+      await disconnectPrisma();
+      logger.info('Graceful shutdown complete.');
+      process.exit(0);
+    });
+
+    // Force exit if shutdown takes too long
+    setTimeout(() => {
+      logger.error('Forced shutdown — timeout exceeded.');
+      process.exit(1);
+    }, 10_000);
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  // ---- Unhandled Rejection / Uncaught Exception Handlers ----
+  process.on('unhandledRejection', (reason: unknown) => {
+    logger.fatal({ reason }, 'Unhandled Promise Rejection');
     process.exit(1);
-  }, 10_000);
-};
+  });
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-// ---- Unhandled Rejection / Uncaught Exception Handlers ----
-process.on('unhandledRejection', (reason: unknown) => {
-  logger.fatal({ reason }, 'Unhandled Promise Rejection');
-  process.exit(1);
-});
-
-process.on('uncaughtException', (error: Error) => {
-  logger.fatal({ error }, 'Uncaught Exception');
-  process.exit(1);
-});
-
-export default app;
+  process.on('uncaughtException', (error: Error) => {
+    logger.fatal({ error }, 'Uncaught Exception');
+    process.exit(1);
+  });
+}

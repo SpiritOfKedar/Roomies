@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
 import * as penaltyRepo from './penalty.repository';
 import { logger } from '../../shared/utils/logger';
+import { AppError, NotFoundError } from '../../shared/utils/app-error';
+import * as houseService from '../house/house.service';
 
 type TxClient = Prisma.TransactionClient;
 
@@ -33,4 +35,45 @@ export async function applyPenalty(
   logger.info({ userId, taskId, points, fineAmount, reason }, 'Penalty applied');
 
   return penalty;
+}
+
+/**
+ * Settle an outstanding penalty.
+ * Transitions the penalty status from 'unpaid' → 'settled'.
+ *
+ * Security: Only a House Admin for the penalty's house may settle it.
+ *
+ * @param requestingUserId - The admin user triggering the settlement
+ * @param houseId          - The house scope (verified against penalty's task)
+ * @param penaltyId        - The penalty UUID to settle
+ * @returns The updated penalty record
+ *
+ * @throws NotFoundError   if the penalty does not exist or belongs to a different house
+ * @throws ForbiddenError  if the requesting user is not an admin of the house
+ * @throws AppError(409)   if the penalty is already settled or forgiven
+ */
+export async function settlePenalty(requestingUserId: string, houseId: string, penaltyId: string) {
+  // 1. Verify the requesting user is an admin of the house
+  await houseService.verifyAdminRole(houseId, requestingUserId);
+
+  // 2. Fetch the penalty and validate it belongs to this house
+  const existing = await penaltyRepo.findPenaltyById(penaltyId);
+  if (!existing || existing.task.houseId !== houseId) {
+    throw NotFoundError('Penalty');
+  }
+
+  if (existing.status !== 'unpaid') {
+    throw new AppError(`Penalty is already '${existing.status}' and cannot be settled again.`, 409);
+  }
+
+  // 3. Settle
+  const updated = await penaltyRepo.settlePenalty(penaltyId);
+  if (!updated) {
+    // Race condition: another request settled it between the check and update
+    throw new AppError('Penalty was already settled by a concurrent request.', 409);
+  }
+
+  logger.info({ penaltyId, houseId, requestingUserId }, 'Penalty settled by admin');
+
+  return updated;
 }

@@ -14,17 +14,35 @@
  */
 
 import { Router } from 'express';
+import multer from 'multer';
 import { requireAuth } from '../../shared/middleware/require-auth';
 import { validate } from '../../shared/middleware/validate';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import * as tasksController from './tasks.controller';
 import {
   assignTaskSchema,
-  submitTaskSchema,
   taskIdParamsSchema,
   houseIdParamsSchema,
   paginationQuerySchema,
+  updateTaskSchema,
+  houseTaskParamsSchema,
 } from './tasks.schema';
+
+/**
+ * Multer — in-memory storage so the Buffer is directly available for upload.
+ * Limits: 5 MB per file, single image field named 'proof'.
+ */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  },
+});
 
 // ---- House-scoped task routes (/api/houses/:id/tasks) ----
 export const houseTaskRoutes = Router({ mergeParams: true });
@@ -51,6 +69,16 @@ houseTaskRoutes.get(
   asyncHandler(tasksController.getTasksByHouse),
 );
 
+/**
+ * PATCH /api/houses/:id/tasks/:taskId
+ * Admin-only mutation of a pending task (deadline, title, rewardPoints, penaltyFine).
+ */
+houseTaskRoutes.patch(
+  '/:taskId',
+  validate({ params: houseTaskParamsSchema, body: updateTaskSchema }),
+  asyncHandler(tasksController.updateTask),
+);
+
 // ---- Task-scoped routes (/api/tasks) ----
 export const taskRoutes = Router();
 
@@ -58,10 +86,12 @@ taskRoutes.use(requireAuth);
 
 /**
  * POST /api/tasks/:id/submit
- * Submit proof for a task. Only the assigned user can submit.
+ * Submit proof for a task. Accepts multipart/form-data with an optional
+ * 'proof' image file. Only the assigned user can submit.
  */
 taskRoutes.post(
   '/:id/submit',
-  validate({ params: taskIdParamsSchema, body: submitTaskSchema }),
+  upload.single('proof'),
+  validate({ params: taskIdParamsSchema }),
   asyncHandler(tasksController.submitTask),
 );

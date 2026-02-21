@@ -2,6 +2,10 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  // setupFiles: loaded BEFORE the test framework — used to inject env vars from
+  // .env.test so that env.ts (Zod-validated) reads the correct DATABASE_URL etc.
+  setupFiles: ['<rootDir>/src/__tests__/jest-env.ts'],
+  // setupFilesAfterEnv: loaded AFTER the framework — registers mocks & teardown.
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',

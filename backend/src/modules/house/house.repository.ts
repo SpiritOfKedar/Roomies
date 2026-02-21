@@ -164,6 +164,25 @@ export async function isActiveMember(houseId: string, userId: string): Promise<b
 }
 
 /**
+ * Check if a user is an active admin of a specific house.
+ *
+ * @param houseId - The house UUID
+ * @param userId - The user UUID
+ * @returns True if the user is an active member with role 'admin'
+ */
+export async function isActiveAdmin(houseId: string, userId: string): Promise<boolean> {
+  const count = await prisma.houseMember.count({
+    where: {
+      houseId,
+      userId,
+      status: 'active',
+      role: 'admin',
+    },
+  });
+  return count > 0;
+}
+
+/**
  * Check if a user is a member of a house (any status).
  *
  * @param houseId - The house UUID
@@ -208,6 +227,56 @@ export async function getActiveMembers(houseId: string) {
       },
     },
   });
+}
+
+/**
+ * Find the exact HouseMember junction record for a user in a house.
+ *
+ * @param houseId - The house UUID
+ * @param userId  - The user UUID
+ * @returns The membership record or null
+ */
+export async function findMemberRecord(houseId: string, userId: string) {
+  return prisma.houseMember.findUnique({
+    where: { houseId_userId: { houseId, userId } },
+    select: { id: true, houseId: true, userId: true, role: true, status: true, joinedAt: true },
+  });
+}
+
+/**
+ * Update the status of a house member.
+ * Allowed status values: 'active' | 'on_leave' | 'inactive'
+ *
+ * @param houseId - The house UUID
+ * @param userId  - The member's user UUID
+ * @param status  - New status string
+ * @returns The updated membership record
+ */
+export async function updateMemberStatus(houseId: string, userId: string, status: string) {
+  return prisma.houseMember.update({
+    where: { houseId_userId: { houseId, userId } },
+    data: { status },
+    select: { id: true, houseId: true, userId: true, role: true, status: true, joinedAt: true },
+  });
+}
+
+/**
+ * Expire all pending tasks assigned to a specific user within a house.
+ * Called automatically when a member is deactivated (offboarding).
+ *
+ * @param houseId - The house UUID
+ * @param userId  - The deactivated user's UUID
+ * @returns Number of tasks that were expired
+ */
+export async function expirePendingTasksForMember(
+  houseId: string,
+  userId: string,
+): Promise<number> {
+  const result = await prisma.task.updateMany({
+    where: { houseId, assignedTo: userId, status: 'pending' },
+    data: { status: 'expired' },
+  });
+  return result.count;
 }
 
 /**
