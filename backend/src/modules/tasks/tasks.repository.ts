@@ -188,38 +188,32 @@ export async function findTaskById(taskId: string) {
 }
 
 /**
- * Update a task's status.
+ * Update a task's status atomically.
+ * Ensures the status has not changed concurrently.
  *
  * @param taskId - The task UUID
- * @param status - New status value
+ * @param newStatus - New status value
+ * @param expectedStatus - The status value that must currently be present
  * @param imageUrl - Optional image URL (for proof submission)
- * @returns Updated task record
+ * @returns Updated task record, or null if the conditional update fails
  */
-export async function updateTaskStatus(taskId: string, status: string, imageUrl?: string) {
-  return prisma.task.update({
-    where: { id: taskId },
+export async function updateTaskStatusAtomic(
+  taskId: string,
+  newStatus: string,
+  expectedStatus: string,
+  imageUrl?: string,
+) {
+  const result = await prisma.task.updateMany({
+    where: { id: taskId, status: expectedStatus },
     data: {
-      status,
+      status: newStatus,
       ...(imageUrl && { imageUrl }),
     },
-    select: {
-      id: true,
-      houseId: true,
-      assignedTo: true,
-      title: true,
-      status: true,
-      deadline: true,
-      createdAt: true,
-      imageUrl: true,
-      assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-    },
   });
+
+  if (result.count === 0) return null;
+
+  return findTaskById(taskId);
 }
 
 /**

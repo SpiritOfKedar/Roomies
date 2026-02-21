@@ -51,6 +51,9 @@ export async function castVote(userId: string, taskId: string, voteType: 'approv
   // 4. Execute Transaction
   const result = await prisma.$transaction(
     async (tx: Parameters<typeof penaltyService.applyPenalty>[0]) => {
+      // 0. Lock the task row to prevent concurrent voting write-skew (Lost Wake-up)
+      await tx.$executeRaw`SELECT id FROM tasks WHERE id = ${taskId}::uuid FOR UPDATE`;
+
       // a. Insert Vote (Unique constraints prevent double voting: @@unique([taskId, userId]))
       try {
         await tx.vote.create({
@@ -103,28 +106,52 @@ export async function castVote(userId: string, taskId: string, voteType: 'approv
         finalStatus = 'completed';
         actionMsg = 'Task approved';
 
-        await tx.task.update({
-          where: { id: taskId },
+        await tx.task.updateMany({
+          where: { id: taskId, status: 'submitted' },
           data: { status: 'completed' },
         });
       } else if (rejectedVotes >= majorityThreshold) {
         finalStatus = 'rejected';
         actionMsg = 'Task rejected by peers';
 
-        await tx.task.update({
-          where: { id: taskId },
+        const updateResult = await tx.task.updateMany({
+          where: { id: taskId, status: 'submitted' },
           data: { status: 'rejected' },
         });
 
-        // Apply Penalty using the exact requested transaction flow
-        await penaltyService.applyPenalty(
-          tx,
-          task.assignedTo,
-          taskId,
-          'Task proof rejected by majority vote',
-          10,
-          50.0,
-        );
+        if (updateResult.count > 0) {
+          // Apply Penalty using the exact requested transaction flow ONLY if this transaction changed the status
+          await penaltyService.applyPenalty(
+            tx,
+            task.assignedTo,
+            taskId,
+            'Task proof rejected by majority vote',
+            10,
+            50.0,
+          );
+        }
+      } else if (approvedVotes + rejectedVotes === eligibleVoters) {
+        // TIE BREAKER: All eligible voters have voted, but neither reached absolute majority.
+        // This occurs in even-voter scenarios where votes split exactly 50/50.
+        // Defaulting to 'rejected' because majority consensus was mathematically not achieved.
+        finalStatus = 'rejected';
+        actionMsg = 'Task rejected by peers (Tie - Failed to reach majority consensus)';
+
+        const updateResult = await tx.task.updateMany({
+          where: { id: taskId, status: 'submitted' },
+          data: { status: 'rejected' },
+        });
+
+        if (updateResult.count > 0) {
+          await penaltyService.applyPenalty(
+            tx,
+            task.assignedTo,
+            taskId,
+            'Task proof rejected due to tied votes (failed to reach majority)',
+            10,
+            50.0,
+          );
+        }
       }
 
       logger.info(

@@ -9,7 +9,7 @@ export default tseslint.config(
     {
         languageOptions: {
             parserOptions: {
-                project: ['./tsconfig.json'],
+                project: ['./tsconfig.eslint.json'],
                 tsconfigRootDir: import.meta.dirname,
             },
         },
@@ -25,6 +25,15 @@ export default tseslint.config(
             ],
             'no-console': ['warn', { allow: ['warn', 'error'] }],
         },
+    },
+    {
+        files: ['**/*.test.ts'],
+        rules: {
+            '@typescript-eslint/no-unsafe-assignment': 'off',
+            '@typescript-eslint/no-unsafe-member-access': 'off',
+            '@typescript-eslint/no-explicit-any': 'off',
+            '@typescript-eslint/unbound-method': 'off'
+        }
     },
     {
         ignores: ['node_modules/', 'dist/', 'coverage/', 'jest.config.ts'],

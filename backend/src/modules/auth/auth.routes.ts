@@ -19,6 +19,7 @@ import { validate } from '../../shared/middleware/validate';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import * as authController from './auth.controller';
 import { registerSchema, loginSchema, refreshSchema } from './auth.schema';
+import { authLimiter } from '../../shared/middleware/rate-limiter';
 
 const router = Router();
 
@@ -26,13 +27,23 @@ const router = Router();
  * POST /api/auth/register
  * Public — creates a new user account.
  */
-router.post('/register', validate({ body: registerSchema }), asyncHandler(authController.register));
+router.post(
+  '/register',
+  authLimiter,
+  validate({ body: registerSchema }),
+  asyncHandler(authController.register),
+);
 
 /**
  * POST /api/auth/login
  * Public — authenticates existing user.
  */
-router.post('/login', validate({ body: loginSchema }), asyncHandler(authController.login));
+router.post(
+  '/login',
+  authLimiter,
+  validate({ body: loginSchema }),
+  asyncHandler(authController.login),
+);
 
 /**
  * POST /api/auth/refresh

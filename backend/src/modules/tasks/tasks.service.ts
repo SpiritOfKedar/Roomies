@@ -175,10 +175,26 @@ export async function submitTask(userId: string, taskId: string, imageUrl?: stri
     throw new AppError('Cannot submit task: deadline has passed', 400);
   }
 
-  // 5. Update status
-  const updatedTask = await tasksRepo.updateTaskStatus(taskId, 'submitted', imageUrl);
+  // 5. Check if solo house (1 active member)
+  const activeMembersCount = await prisma.houseMember.count({
+    where: { houseId: task.houseId, status: 'active' },
+  });
 
-  logger.info({ taskId, userId }, 'Task submitted');
+  const isSoloHouse = activeMembersCount <= 1;
+  const newStatus = isSoloHouse ? 'completed' : 'submitted';
+
+  // 6. Update status atomically
+  const updatedTask = await tasksRepo.updateTaskStatusAtomic(
+    taskId,
+    newStatus,
+    'pending',
+    imageUrl,
+  );
+  if (!updatedTask) {
+    throw new AppError('Task state was modified concurrently. Please try again.', 409);
+  }
+
+  logger.info({ taskId, userId, newStatus }, `Task submitted (Solo House: ${isSoloHouse})`);
 
   return updatedTask;
 }

@@ -19,6 +19,7 @@ import cookieParser from 'cookie-parser';
 import { env } from './shared/utils/env';
 import { logger } from './shared/utils/logger';
 import { globalErrorHandler } from './shared/middleware/error-handler';
+import { apiLimiter } from './shared/middleware/rate-limiter';
 import { disconnectPrisma } from './shared/db/prisma';
 
 // ---- Module Route Imports ----
@@ -30,7 +31,8 @@ import { votingRoutes } from './modules/voting/voting.routes';
 import { leaderboardRoutes } from './modules/leaderboard/leaderboard.routes';
 
 // ---- Background Jobs Imports ----
-import { startTaskSweeper } from './shared/jobs/task-sweeper.job';
+import { scheduleTaskSweeperJob, closeQueue } from './shared/jobs/queue';
+import { startTaskSweeperWorker, closeWorker } from './shared/jobs/worker';
 
 // ---- Create Express App ----
 const app = express();
@@ -56,6 +58,8 @@ app.get('/health', (_req, res) => {
 });
 
 // ---- Module Routes ----
+app.use('/api', apiLimiter); // Apply general API limits across all routes
+
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/houses', houseRoutes);
@@ -70,7 +74,8 @@ app.use(globalErrorHandler);
 // ---- Start Server ----
 const server = app.listen(env.PORT, () => {
   logger.info(`🚀 Roomies backend running on port ${env.PORT} [${env.NODE_ENV}]`);
-  startTaskSweeper();
+  scheduleTaskSweeperJob().catch((err) => logger.error({ err }, 'Failed to schedule task sweeper'));
+  startTaskSweeperWorker();
 });
 
 // ---- Graceful Shutdown ----
@@ -79,6 +84,8 @@ const gracefulShutdown = async (signal: string): Promise<void> => {
 
   server.close(async () => {
     logger.info('HTTP server closed.');
+    await closeQueue();
+    await closeWorker();
     await disconnectPrisma();
     logger.info('Graceful shutdown complete.');
     process.exit(0);

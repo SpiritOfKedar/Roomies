@@ -20,6 +20,7 @@
  */
 
 import { prisma } from '../../shared/db/prisma';
+import { Prisma } from '@prisma/client';
 import { hashPassword, comparePassword } from '../../shared/utils/hash';
 import {
   generateTokenPair,
@@ -234,9 +235,16 @@ export async function refresh(
   }
 
   // 4. Delete the used token (one-time use)
-  await prisma.refreshToken.delete({
-    where: { id: matchedTokenId },
-  });
+  try {
+    await prisma.refreshToken.delete({
+      where: { id: matchedTokenId },
+    });
+  } catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw UnauthorizedError('Invalid or expired refresh token');
+    }
+    throw error;
+  }
 
   // 5. Generate new pair
   const { accessToken, refreshToken } = generateTokenPair(payload.userId);

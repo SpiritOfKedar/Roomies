@@ -15,6 +15,8 @@
 import { NotFoundError, ConflictError, ForbiddenError } from '../../shared/utils/app-error';
 import * as houseRepo from './house.repository';
 import { logger } from '../../shared/utils/logger';
+import { prisma } from '../../shared/db/prisma';
+import { Prisma } from '@prisma/client';
 
 // ---- Service Functions ----
 
@@ -31,19 +33,32 @@ import { logger } from '../../shared/utils/logger';
  * @returns The created house with members
  */
 export async function createHouse(userId: string, name: string) {
-  // 1. Create house
-  const house = await houseRepo.createHouse({
-    name,
-    createdBy: userId,
+  const houseId = await prisma.$transaction(async (tx) => {
+    // 1. Create house
+    const house = await tx.house.create({
+      data: {
+        name,
+        createdBy: userId,
+      },
+      select: { id: true },
+    });
+
+    // 2. Add creator as admin
+    await tx.houseMember.create({
+      data: {
+        houseId: house.id,
+        userId,
+        role: 'admin',
+      },
+    });
+
+    return house.id;
   });
 
-  // 2. Add creator as admin
-  await houseRepo.addMember(house.id, userId, 'admin');
-
   // 3. Fetch full house with members
-  const houseWithMembers = await houseRepo.findHouseWithMembers(house.id);
+  const houseWithMembers = await houseRepo.findHouseWithMembers(houseId);
 
-  logger.info({ houseId: house.id, userId }, 'House created');
+  logger.info({ houseId, userId }, 'House created');
 
   return houseWithMembers;
 }
@@ -66,14 +81,31 @@ export async function joinHouse(userId: string, houseId: string) {
     throw NotFoundError('House');
   }
 
-  // 2. Check if already a member (any status)
-  const alreadyMember = await houseRepo.isMember(houseId, userId);
-  if (alreadyMember) {
-    throw ConflictError('You are already a member of this house');
-  }
+  // 2. Find existing member record
+  const existingMember = await prisma.houseMember.findFirst({
+    where: { houseId, userId },
+  });
 
-  // 3. Add as member
-  await houseRepo.addMember(houseId, userId, 'member');
+  if (existingMember) {
+    if (existingMember.status === 'active') {
+      throw ConflictError('You are already a member of this house');
+    } else if (existingMember.status === 'inactive') {
+      await prisma.houseMember.update({
+        where: { id: existingMember.id },
+        data: { status: 'active' },
+      });
+    }
+  } else {
+    // 3. Add as member (handles concurrent 500 crash mapping to 409 gracefully)
+    try {
+      await houseRepo.addMember(houseId, userId, 'member');
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw ConflictError('You are already a member of this house');
+      }
+      throw error;
+    }
+  }
 
   // 4. Return updated house
   const houseWithMembers = await houseRepo.findHouseWithMembers(houseId);
