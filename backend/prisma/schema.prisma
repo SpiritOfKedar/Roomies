@@ -30,12 +30,16 @@ model User {
   status        String   @default("active") @db.Text
 
   // ---------- Relations ----------
-  housesCreated  House[]        @relation("HouseCreator")
-  memberships    HouseMember[]
-  tasksAssigned  Task[]
-  votes          Vote[]
-  penalties      Penalty[]
-  refreshTokens  RefreshToken[]
+  housesCreated    House[]        @relation("HouseCreator")
+  memberships      HouseMember[]
+  tasksAssigned    Task[]
+  votes            Vote[]
+  penalties        Penalty[]
+  refreshTokens    RefreshToken[]
+  swapsRequested   TaskSwap[]     @relation("SwapRequester")
+  swapsReceived    TaskSwap[]     @relation("SwapReceiver")
+  expensesPaid     Expense[]      @relation("ExpensePayer")
+  expenseSplits    ExpenseSplit[] @relation("ExpenseSplitOwed")
 
   @@map("users")
 }
@@ -56,9 +60,11 @@ model House {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   // ---------- Relations ----------
-  creator  User          @relation("HouseCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-  members  HouseMember[]
-  tasks    Task[]
+  creator   User          @relation("HouseCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  members   HouseMember[]
+  tasks     Task[]
+  swaps     TaskSwap[]
+  expenses  Expense[]
 
   @@map("houses")
 }
@@ -123,10 +129,12 @@ model Task {
   aiVerdict  String?  @map("ai_verdict") @db.Text
 
   // ---------- Relations ----------
-  house      House     @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  assignee   User      @relation(fields: [assignedTo], references: [id], onDelete: Cascade)
-  votes      Vote[]
-  penalties  Penalty[]
+  house          House      @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  assignee       User       @relation(fields: [assignedTo], references: [id], onDelete: Cascade)
+  votes          Vote[]
+  penalties      Penalty[]
+  offeredSwaps   TaskSwap[] @relation("OfferedTask")
+  requestedSwaps TaskSwap[] @relation("RequestedTask")
 
   // ---------- Indexes ----------
   @@index([houseId])
@@ -187,6 +195,92 @@ model Penalty {
   @@index([userId])
   @@index([taskId])
   @@map("penalties")
+}
+
+// =============================================================================
+// TASK SWAPS
+// =============================================================================
+// Peer-to-peer chore swap requests between house members.
+// Only 'pending' tasks may be swapped.  The atomic swap of assignedTo on both
+// tasks happens inside a Prisma transaction when the receiver accepts.
+//
+// Allowed status values: 'pending' | 'accepted' | 'rejected' | 'canceled'
+// =============================================================================
+model TaskSwap {
+  id              String   @id @default(uuid()) @db.Uuid
+  houseId         String   @map("house_id") @db.Uuid
+  requesterId     String   @map("requester_id") @db.Uuid
+  receiverId      String   @map("receiver_id") @db.Uuid
+  offeredTaskId   String   @map("offered_task_id") @db.Uuid
+  requestedTaskId String   @map("requested_task_id") @db.Uuid
+  status          String   @default("pending") @db.Text
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // ---------- Relations ----------
+  house         House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  requester     User  @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiver      User  @relation("SwapReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  offeredTask   Task  @relation("OfferedTask", fields: [offeredTaskId], references: [id], onDelete: Cascade)
+  requestedTask Task  @relation("RequestedTask", fields: [requestedTaskId], references: [id], onDelete: Cascade)
+
+  // ---------- Indexes ----------
+  @@index([houseId])
+  @@index([requesterId])
+  @@index([receiverId])
+  @@map("task_swaps")
+}
+
+// =============================================================================
+// EXPENSES
+// =============================================================================
+// Records a shared expense paid by one member on behalf of the house.
+// The cost is split equally across all active members at creation time.
+// The payer's own split is auto-marked 'settled'; all others start 'unpaid'.
+// =============================================================================
+model Expense {
+  id          String   @id @default(uuid()) @db.Uuid
+  houseId     String   @map("house_id") @db.Uuid
+  paidBy      String   @map("paid_by") @db.Uuid
+  amount      Decimal  @db.Decimal(10, 2)
+  description String   @db.Text
+  receiptUrl  String?  @map("receipt_url") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // ---------- Relations ----------
+  house  House          @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  payer  User           @relation("ExpensePayer", fields: [paidBy], references: [id], onDelete: Cascade)
+  splits ExpenseSplit[]
+
+  // ---------- Indexes ----------
+  @@index([houseId])
+  @@index([paidBy])
+  @@map("expenses")
+}
+
+// =============================================================================
+// EXPENSE SPLITS
+// =============================================================================
+// Per-member share of a shared expense.
+// Allowed status values: 'unpaid' | 'settled'
+// Settlement can be triggered by either the owedBy member or the expense payer.
+// =============================================================================
+model ExpenseSplit {
+  id        String   @id @default(uuid()) @db.Uuid
+  expenseId String   @map("expense_id") @db.Uuid
+  owedBy    String   @map("owed_by") @db.Uuid
+  amount    Decimal  @db.Decimal(10, 2)
+  status    String   @default("unpaid") @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // ---------- Relations ----------
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation("ExpenseSplitOwed", fields: [owedBy], references: [id], onDelete: Cascade)
+
+  // ---------- Indexes ----------
+  @@index([expenseId])
+  @@index([owedBy])
+  @@map("expense_splits")
 }
 
 // =============================================================================

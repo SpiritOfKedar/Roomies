@@ -30,6 +30,8 @@ import { houseTaskRoutes, taskRoutes } from './modules/tasks/tasks.routes';
 import { votingRoutes } from './modules/voting/voting.routes';
 import { leaderboardRoutes } from './modules/leaderboard/leaderboard.routes';
 import { penaltyRoutes } from './modules/penalty/penalty.routes';
+import { swapRoutes } from './modules/tasks/swap.routes';
+import { expenseRoutes } from './modules/expenses/expense.routes';
 
 // ---- Background Jobs Imports ----
 import { scheduleTaskSweeperJob, closeQueue } from './shared/jobs/queue';
@@ -75,6 +77,8 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/tasks', votingRoutes);
 app.use('/api/houses', leaderboardRoutes); // /api/houses/:id/leaderboard
 app.use('/api/houses/:houseId/penalties', penaltyRoutes); // /api/houses/:houseId/penalties/:penaltyId/settle
+app.use('/api/houses/:id/swaps', swapRoutes); // /api/houses/:id/swaps + /:swapId/resolve
+app.use('/api/houses/:id/expenses', expenseRoutes); // /api/houses/:id/expenses + /splits/:splitId/settle
 
 // ---- Global Error Handler (must be registered last) ----
 app.use(globalErrorHandler);
