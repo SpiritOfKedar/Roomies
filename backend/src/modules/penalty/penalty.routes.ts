@@ -20,6 +20,13 @@ export const penaltyRoutes = Router({ mergeParams: true });
 penaltyRoutes.use(requireAuth);
 
 /**
+ * GET /api/houses/:houseId/penalties
+ *
+ * List all penalties for a house. Requires house membership.
+ */
+penaltyRoutes.get('/', asyncHandler(penaltyController.getPenalties));
+
+/**
  * POST /api/houses/:houseId/penalties/:penaltyId/settle
  *
  * Transitions a penalty from 'unpaid' → 'settled'.

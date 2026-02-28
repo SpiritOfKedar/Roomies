@@ -7,6 +7,19 @@ import * as houseService from '../house/house.service';
 type TxClient = Prisma.TransactionClient;
 
 /**
+ * List all penalties for a house.
+ *
+ * @param requestingUserId - The user requesting the list (must be a house member)
+ * @param houseId          - The house scope
+ * @returns Array of penalty records with task and user info
+ */
+export async function getPenaltiesByHouse(requestingUserId: string, houseId: string) {
+  await houseService.verifyMembership(houseId, requestingUserId);
+
+  return penaltyRepo.findPenaltiesByHouse(houseId);
+}
+
+/**
  * Apply a penalty to a user for failing a task.
  * Called automatically when a task is rejected by peers or expires.
  *

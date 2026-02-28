@@ -28,6 +28,21 @@ import { logger } from '../../shared/utils/logger';
 // ---- Service Functions ----
 
 /**
+ * List all swaps for a house.
+ *
+ * @param userId  - The requesting user (must be a house member)
+ * @param houseId - The house scope
+ * @returns Array of swap records
+ */
+export async function getSwapsByHouse(userId: string, houseId: string) {
+  await houseService.verifyMembership(houseId, userId);
+
+  const { swaps } = await swapRepo.getSwapsByHouse(houseId, 100, 0);
+
+  return swaps;
+}
+
+/**
  * Propose a chore swap between two house members.
  *
  * Guards:

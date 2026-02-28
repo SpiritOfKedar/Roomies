@@ -27,6 +27,16 @@ export const swapRoutes = Router({ mergeParams: true });
 swapRoutes.use(requireAuth);
 
 /**
+ * GET /api/houses/:id/swaps
+ * List all task swaps for a house.
+ */
+swapRoutes.get(
+  '/',
+  validate({ params: houseIdParamsSchema }),
+  asyncHandler(swapController.getSwaps),
+);
+
+/**
  * POST /api/houses/:id/swaps
  * Propose a task swap with another house member.
  */

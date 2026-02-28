@@ -69,6 +69,19 @@ export async function getUserHouses(req: Request, res: Response): Promise<void> 
 }
 
 /**
+ * POST /api/houses/join
+ * Joins a house by invite code. Body: { inviteCode: string }
+ */
+export async function joinByInviteCode(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { inviteCode } = req.body as { inviteCode: string };
+
+  const house = await houseService.joinByInviteCode(userId, inviteCode);
+
+  sendSuccess(res, house);
+}
+
+/**
  * PATCH /api/houses/:id/members/:userId
  * Update the status of a house member ('active' | 'on_leave' | 'inactive').
  * Admin only. Setting a member to 'inactive' automatically expires their pending tasks.

@@ -42,6 +42,13 @@ router.post('/', validate({ body: createHouseSchema }), asyncHandler(houseContro
 router.get('/', asyncHandler(houseController.getUserHouses));
 
 /**
+ * POST /api/houses/join
+ * Join a house using an invite code. Body: { inviteCode: string }
+ * Must be placed before /:id routes to avoid route conflicts.
+ */
+router.post('/join', asyncHandler(houseController.joinByInviteCode));
+
+/**
  * GET /api/houses/:id
  * Get house details and members. Must be a member.
  */

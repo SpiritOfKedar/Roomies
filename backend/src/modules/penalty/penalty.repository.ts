@@ -77,3 +77,29 @@ export async function settlePenalty(penaltyId: string) {
     });
   });
 }
+
+/**
+ * Find all penalties for tasks belonging to a specific house.
+ */
+export async function findPenaltiesByHouse(houseId: string) {
+  return import('../../shared/db/prisma').then(({ prisma }) =>
+    prisma.penalty.findMany({
+      where: { task: { houseId } },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        points: true,
+        fineAmount: true,
+        createdAt: true,
+        task: {
+          select: { id: true, title: true, houseId: true },
+        },
+        user: {
+          select: { id: true, name: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+  );
+}

@@ -17,6 +17,14 @@ import * as houseRepo from './house.repository';
 import { logger } from '../../shared/utils/logger';
 import { prisma } from '../../shared/db/prisma';
 import { Prisma } from '@prisma/client';
+import crypto from 'crypto';
+
+/**
+ * Generate a short, URL-safe invite code (8 chars).
+ */
+function generateInviteCode(): string {
+  return crypto.randomBytes(4).toString('hex').toUpperCase(); // e.g. "A1B2C3D4"
+}
 
 // ---- Service Functions ----
 
@@ -34,11 +42,12 @@ import { Prisma } from '@prisma/client';
  */
 export async function createHouse(userId: string, name: string) {
   const houseId = await prisma.$transaction(async (tx) => {
-    // 1. Create house
+    // 1. Create house with invite code
     const house = await tx.house.create({
       data: {
         name,
         createdBy: userId,
+        inviteCode: generateInviteCode(),
       },
       select: { id: true },
     });
@@ -113,6 +122,26 @@ export async function joinHouse(userId: string, houseId: string) {
   logger.info({ houseId, userId }, 'User joined house');
 
   return houseWithMembers;
+}
+
+/**
+ * Join a house using its invite code.
+ *
+ * @param userId - The joining user's UUID
+ * @param inviteCode - The 8-char invite code
+ * @returns The updated house with members
+ */
+export async function joinByInviteCode(userId: string, inviteCode: string) {
+  const house = await prisma.house.findUnique({
+    where: { inviteCode: inviteCode.toUpperCase() },
+    select: { id: true },
+  });
+
+  if (!house) {
+    throw NotFoundError('House with that invite code');
+  }
+
+  return joinHouse(userId, house.id);
 }
 
 /**

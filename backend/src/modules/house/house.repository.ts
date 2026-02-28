@@ -22,6 +22,7 @@ export interface CreateHouseData {
 export interface HouseWithMembers {
   id: string;
   name: string;
+  inviteCode: string;
   createdBy: string;
   currentIndex: number;
   createdAt: Date;
@@ -75,6 +76,7 @@ export async function findHouseById(id: string) {
     select: {
       id: true,
       name: true,
+      inviteCode: true,
       createdBy: true,
       currentIndex: true,
       createdAt: true,
@@ -94,6 +96,7 @@ export async function findHouseWithMembers(id: string): Promise<HouseWithMembers
     select: {
       id: true,
       name: true,
+      inviteCode: true,
       createdBy: true,
       currentIndex: true,
       createdAt: true,
@@ -280,30 +283,50 @@ export async function expirePendingTasksForMember(
 }
 
 /**
- * Get all houses a user belongs to.
+ * Get all houses a user belongs to, each with its full member list.
  *
  * @param userId - The user UUID
- * @returns Array of houses with membership info
+ * @returns Array of House objects (with nested members) the user belongs to
  */
-export async function getHousesByUser(userId: string) {
-  return prisma.houseMember.findMany({
-    where: {
-      userId,
-      status: 'active',
-    },
+export async function getHousesByUser(userId: string): Promise<HouseWithMembers[]> {
+  // 1. Find all house IDs the user is an active member of
+  const memberships = await prisma.houseMember.findMany({
+    where: { userId, status: 'active' },
+    select: { houseId: true },
+    orderBy: { joinedAt: 'desc' },
+  });
+
+  if (memberships.length === 0) return [];
+
+  const houseIds = memberships.map((m) => m.houseId);
+
+  // 2. Fetch those houses with their full member lists
+  return prisma.house.findMany({
+    where: { id: { in: houseIds } },
     select: {
       id: true,
-      role: true,
-      joinedAt: true,
-      house: {
+      name: true,
+      inviteCode: true,
+      createdBy: true,
+      currentIndex: true,
+      createdAt: true,
+      members: {
         select: {
           id: true,
-          name: true,
-          createdBy: true,
-          createdAt: true,
+          userId: true,
+          role: true,
+          joinedAt: true,
+          status: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
         },
+        orderBy: { joinedAt: 'asc' },
       },
     },
-    orderBy: { joinedAt: 'desc' },
   });
 }

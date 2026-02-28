@@ -13,6 +13,20 @@ import * as swapService from './swap.service';
 import type { HouseIdParams, SwapParams, ProposeSwapInput, ResolveSwapInput } from './swap.schema';
 
 /**
+ * GET /api/houses/:id/swaps
+ *
+ * List all task swaps for a house.
+ */
+export async function getSwaps(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id: houseId } = req.params as unknown as HouseIdParams;
+
+  const swaps = await swapService.getSwapsByHouse(userId, houseId);
+
+  sendSuccess(res, swaps);
+}
+
+/**
  * POST /api/houses/:id/swaps
  *
  * Propose a peer-to-peer task swap.

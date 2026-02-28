@@ -33,14 +33,24 @@ export function validate(schemas: ValidationSchemas) {
       }
       if (schemas.query) {
         const parsedQuery = await schemas.query.parseAsync(req.query);
-        // Clear existing keys and spread parsed
-        Object.keys(req.query).forEach((k) => delete req.query[k]);
-        Object.assign(req.query, parsedQuery);
+        // Express 5's req.query is a prototype getter that returns a new object
+        // on every access, so Object.assign would mutate a throwaway object.
+        // Use defineProperty to shadow the getter with an own data property.
+        Object.defineProperty(req, 'query', {
+          value: parsedQuery,
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
       }
       if (schemas.params) {
         const parsedParams = await schemas.params.parseAsync(req.params);
-        Object.keys(req.params).forEach((k) => delete req.params[k]);
-        Object.assign(req.params, parsedParams);
+        Object.defineProperty(req, 'params', {
+          value: parsedParams,
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
       }
       next();
     } catch (error) {

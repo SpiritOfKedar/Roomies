@@ -17,6 +17,24 @@ const settleParamsSchema = z.object({
   penaltyId: z.string().uuid('Invalid penalty ID'),
 });
 
+const houseIdParamsSchema = z.object({
+  houseId: z.string().uuid('Invalid house ID'),
+});
+
+/**
+ * GET /api/houses/:houseId/penalties
+ *
+ * List all penalties for a house.
+ */
+export async function getPenalties(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { houseId } = houseIdParamsSchema.parse(req.params);
+
+  const penalties = await penaltyService.getPenaltiesByHouse(userId, houseId);
+
+  sendSuccess(res, penalties);
+}
+
 /**
  * POST /api/houses/:houseId/penalties/:penaltyId/settle
  *
