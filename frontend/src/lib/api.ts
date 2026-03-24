@@ -43,7 +43,8 @@ api.interceptors.response.use(
         queue = [];
         return api(original);
       } catch {
-        localStorage.clear();
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
         window.location.href = '/login';
       } finally {
         refreshing = false;

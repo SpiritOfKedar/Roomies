@@ -28,7 +28,7 @@ export type SplitParams = z.infer<typeof splitParamsSchema>;
 // ---- Create Expense body ----
 
 export const createExpenseSchema = z.object({
-  amount: z
+  amount: z.coerce
     .number()
     .positive('Amount must be a positive number')
     .multipleOf(0.01, 'Amount must have at most 2 decimal places'),

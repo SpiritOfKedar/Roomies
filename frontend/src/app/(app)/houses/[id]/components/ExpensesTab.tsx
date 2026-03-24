@@ -52,7 +52,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
     setAdding(true);
     try {
       const fd = new FormData();
-      fd.append('title', addTitle);
+      fd.append('description', addTitle);
       fd.append('amount', addAmount);
       if (addReceipt) fd.append('receipt', addReceipt);
       await expensesApi.create(houseId, fd);
@@ -214,11 +214,10 @@ export default function ExpensesTab({ houseId, members }: Props) {
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${
-                            split.status === 'settled'
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${split.status === 'settled'
                               ? 'text-green-400 bg-green-900/30 border-green-800'
                               : 'text-red-400 bg-red-900/30 border-red-800'
-                          }`}>
+                            }`}>
                             {split.status === 'settled' ? 'Settled' : 'Unpaid'}
                           </span>
                           <span className="text-sm font-bold text-white">${Number(split.amount).toFixed(2)}</span>

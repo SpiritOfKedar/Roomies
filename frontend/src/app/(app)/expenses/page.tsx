@@ -62,7 +62,7 @@ export default function ExpensesPage() {
     setAdding(true);
     try {
       const fd = new FormData();
-      fd.append('title', addTitle);
+      fd.append('description', addTitle);
       fd.append('amount', addAmount);
       if (addReceipt) fd.append('receipt', addReceipt);
       await expensesApi.create(selectedHouse, fd);
@@ -221,11 +221,10 @@ export default function ExpensesPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${
-                            split.status === 'settled'
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${split.status === 'settled'
                               ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
                               : 'text-red-700 bg-red-50 border-red-200'
-                          }`}>
+                            }`}>
                             {split.status === 'settled' ? 'Settled' : 'Unpaid'}
                           </span>
                           <span className="text-sm font-bold text-[#171717]">${Number(split.amount).toFixed(2)}</span>
