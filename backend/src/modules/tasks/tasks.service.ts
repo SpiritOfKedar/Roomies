@@ -63,6 +63,8 @@ export async function assignNextTask(
   houseId: string,
   title: string,
   deadlineStr: string,
+  explicitAssignedTo?: string,
+  explicitWeight?: number,
 ) {
   // Pre-check: Verify the requesting user is an active member
   await houseService.verifyMembership(houseId, requestingUserId);
@@ -72,6 +74,14 @@ export async function assignNextTask(
   if (deadline <= new Date()) {
     throw new AppError('Deadline must be in the future', 400);
   }
+
+  // Admin check if explicitly assigning to someone else
+  if (explicitAssignedTo && explicitAssignedTo !== requestingUserId) {
+    await houseService.verifyAdminRole(houseId, requestingUserId);
+  }
+
+  const rewardPoints = explicitWeight ? explicitWeight * 10 : undefined;
+  const penaltyFine = explicitWeight ? explicitWeight * 5 : undefined;
 
   // ---- BEGIN CRITICAL SECTION ----
   // Interactive transaction with row-level locking
@@ -97,18 +107,36 @@ export async function assignNextTask(
     }
 
     // Step 3: Calculate which member gets this task
-    // The modulo handles wrap-around when members leave/join
-    const effectiveIndex = currentIndex % activeMembers.length;
-    const assignedMember = activeMembers[effectiveIndex];
+    let assignedMemberId: string;
+    let assignedMemberName: string;
+    let nextIndex = currentIndex; // default to no increment
+
+    if (explicitAssignedTo) {
+      // Validate the specific member
+      const member = activeMembers.find(m => m.userId === explicitAssignedTo);
+      if (!member) {
+        throw new AppError('Cannot assign task: designated user is not an active member', 400);
+      }
+      assignedMemberId = member.userId;
+      assignedMemberName = member.user.name;
+    } else {
+      // The modulo handles wrap-around when members leave/join
+      const effectiveIndex = currentIndex % activeMembers.length;
+      const assignedMember = activeMembers[effectiveIndex];
+      assignedMemberId = assignedMember.userId;
+      assignedMemberName = assignedMember.user.name;
+      // Step 5: Advance the rotation index ONLY for auto-assigned tasks
+      nextIndex = (currentIndex + 1) % activeMembers.length;
+    }
 
     logger.info(
       {
         houseId,
         currentIndex,
-        effectiveIndex,
+        effectiveIndex: explicitAssignedTo ? 'explicit' : currentIndex % activeMembers.length,
         totalActive: activeMembers.length,
-        assignedTo: assignedMember.userId,
-        assignedName: assignedMember.user.name,
+        assignedTo: assignedMemberId,
+        assignedName: assignedMemberName,
       },
       'Rotation engine: assigning task',
     );
@@ -116,14 +144,16 @@ export async function assignNextTask(
     // Step 4: Create the task
     const createdTask = await tasksRepo.createTaskInTx(tx, {
       houseId,
-      assignedTo: assignedMember.userId,
+      assignedTo: assignedMemberId,
       title,
       deadline,
+      rewardPoints,
+      penaltyFine,
     });
 
-    // Step 5: Advance the rotation index
-    const nextIndex = (currentIndex + 1) % activeMembers.length;
-    await tasksRepo.updateHouseIndexInTx(tx, houseId, nextIndex);
+    if (nextIndex !== currentIndex) {
+      await tasksRepo.updateHouseIndexInTx(tx, houseId, nextIndex);
+    }
 
     logger.info(
       { houseId, oldIndex: currentIndex, newIndex: nextIndex, taskId: createdTask.id },

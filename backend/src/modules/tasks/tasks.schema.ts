@@ -17,6 +17,10 @@ export const assignTaskSchema = z.object({
     .max(200, 'Task title must be at most 200 characters')
     .trim(),
   deadline: z.string().datetime({ message: 'Deadline must be a valid ISO 8601 datetime' }),
+  assignedTo: z.string().uuid('Invalid user ID').optional(),
+  rewardPoints: z.number().int().positive().optional(),
+  penaltyFine: z.number().positive().optional(),
+  weight: z.number().int().positive().optional(),
 });
 
 export type AssignTaskInput = z.infer<typeof assignTaskSchema>;

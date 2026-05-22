@@ -109,6 +109,8 @@ export async function createTaskInTx(
     assignedTo: string;
     title: string;
     deadline: Date;
+    rewardPoints?: number;
+    penaltyFine?: number;
   },
 ) {
   return tx.task.create({
@@ -118,6 +120,8 @@ export async function createTaskInTx(
       title: data.title,
       status: 'pending',
       deadline: data.deadline,
+      ...(data.rewardPoints !== undefined && { rewardPoints: data.rewardPoints }),
+      ...(data.penaltyFine !== undefined && { penaltyFine: data.penaltyFine }),
     },
     select: {
       id: true,
@@ -126,6 +130,8 @@ export async function createTaskInTx(
       title: true,
       status: true,
       deadline: true,
+      rewardPoints: true,
+      penaltyFine: true,
       createdAt: true,
       assignee: {
         select: {

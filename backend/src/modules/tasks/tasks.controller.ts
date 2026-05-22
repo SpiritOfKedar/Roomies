@@ -27,9 +27,9 @@ import type {
 export async function assignTask(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
   const { id: houseId } = req.params as unknown as HouseIdParams;
-  const { title, deadline } = req.body as AssignTaskInput;
+  const { title, deadline, assignedTo, weight } = req.body as AssignTaskInput;
 
-  const task = await tasksService.assignNextTask(userId, houseId, title, deadline);
+  const task = await tasksService.assignNextTask(userId, houseId, title, deadline, assignedTo, weight);
 
   sendSuccess(res, task, 201);
 }

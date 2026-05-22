@@ -28,6 +28,14 @@ export const joinHouseParamsSchema = z.object({
 
 export type JoinHouseParams = z.infer<typeof joinHouseParamsSchema>;
 
+// ---- Add Member by Email ----
+
+export const addMemberByEmailSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export type AddMemberByEmailInput = z.infer<typeof addMemberByEmailSchema>;
+
 // ---- House ID Param (reusable) ----
 
 export const houseIdParamsSchema = z.object({

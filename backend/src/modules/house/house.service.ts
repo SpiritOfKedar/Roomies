@@ -124,13 +124,6 @@ export async function joinHouse(userId: string, houseId: string) {
   return houseWithMembers;
 }
 
-/**
- * Join a house using its invite code.
- *
- * @param userId - The joining user's UUID
- * @param inviteCode - The 8-char invite code
- * @returns The updated house with members
- */
 export async function joinByInviteCode(userId: string, inviteCode: string) {
   const house = await prisma.house.findUnique({
     where: { inviteCode: inviteCode.toUpperCase() },
@@ -142,6 +135,30 @@ export async function joinByInviteCode(userId: string, inviteCode: string) {
   }
 
   return joinHouse(userId, house.id);
+}
+
+/**
+ * Add a member to a house by finding their email.
+ * Admin only.
+ *
+ * @param requestingUserId - The admin user's UUID
+ * @param houseId - The house UUID
+ * @param email - The email of the user to add
+ * @returns The updated house with members
+ */
+export async function addMemberByEmail(requestingUserId: string, houseId: string, email: string) {
+  await verifyAdminRole(houseId, requestingUserId);
+
+  const targetUser = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  if (!targetUser) {
+    throw NotFoundError('User with that email');
+  }
+
+  return joinHouse(targetUser.id, houseId);
 }
 
 /**

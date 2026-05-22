@@ -1,0 +1,32 @@
+# Dependencies
+node_modules
+npm-debug.log
+
+# Build output
+.next
+out
+
+# Environment files (injected via docker-compose)
+.env
+.env.local
+.env.docker
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Docker files (prevent recursive COPY)
+Dockerfile
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs
+README.md
+LICENSE

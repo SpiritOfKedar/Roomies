@@ -24,11 +24,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  /* House detail pages get their own full-screen dark layout */
-  if (isHousePage) {
-    return <>{children}</>;
-  }
-
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
       <Sidebar />

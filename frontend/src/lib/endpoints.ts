@@ -30,6 +30,8 @@ export const housesApi = {
     api.post<{ success: boolean; data: House }>('/api/houses/join', { inviteCode }),
   updateMember: (houseId: string, userId: string, status: string) =>
     api.patch(`/api/houses/${houseId}/members/${userId}`, { status }),
+  addMemberByEmail: (houseId: string, email: string) =>
+    api.post<{ success: boolean; data: House }>(`/api/houses/${houseId}/members/email`, { email }),
 };
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
@@ -42,7 +44,7 @@ export const tasksApi = {
     title: string;
     description?: string;
     deadline?: string;
-    assignedTo: string;
+    assignedTo?: string;
     weight?: number;
   }) =>
     api.post<{ success: boolean; data: Task }>(`/api/houses/${houseId}/tasks/assign`, body),

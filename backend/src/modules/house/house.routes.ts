@@ -22,6 +22,7 @@ import {
   houseIdParamsSchema,
   memberParamsSchema,
   updateMemberStatusBodySchema,
+  addMemberByEmailSchema,
 } from './house.schema';
 
 const router = Router();
@@ -66,6 +67,17 @@ router.post(
   '/:id/join',
   validate({ params: houseIdParamsSchema }),
   asyncHandler(houseController.joinHouse),
+);
+
+/**
+ * POST /api/houses/:id/members/email
+ * Add a member to a house by their email address.
+ * Admin only.
+ */
+router.post(
+  '/:id/members/email',
+  validate({ params: houseIdParamsSchema, body: addMemberByEmailSchema }),
+  asyncHandler(houseController.addMemberByEmail),
 );
 
 /**

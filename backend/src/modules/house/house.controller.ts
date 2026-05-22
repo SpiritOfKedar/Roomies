@@ -15,6 +15,7 @@ import type {
   HouseIdParams,
   MemberParams,
   UpdateMemberStatusInput,
+  AddMemberByEmailInput,
 } from './house.schema';
 
 /**
@@ -77,6 +78,21 @@ export async function joinByInviteCode(req: Request, res: Response): Promise<voi
   const { inviteCode } = req.body as { inviteCode: string };
 
   const house = await houseService.joinByInviteCode(userId, inviteCode);
+
+  sendSuccess(res, house);
+}
+
+/**
+ * POST /api/houses/:id/members/email
+ * Add a member to a house by their email address.
+ * Admin only.
+ */
+export async function addMemberByEmail(req: Request, res: Response): Promise<void> {
+  const requestingUserId = req.user!.userId;
+  const { id: houseId } = req.params as unknown as HouseIdParams;
+  const { email } = req.body as AddMemberByEmailInput;
+
+  const house = await houseService.addMemberByEmail(requestingUserId, houseId, email);
 
   sendSuccess(res, house);
 }

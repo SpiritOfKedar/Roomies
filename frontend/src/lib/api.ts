@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001',
+  baseURL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3005',
   withCredentials: true,
 });
 
@@ -34,7 +34,7 @@ api.interceptors.response.use(
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) throw new Error('no refresh token');
         const { data } = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'}/api/auth/refresh`,
+          `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3005'}/api/auth/refresh`,
           { refreshToken },
         );
         localStorage.setItem('accessToken', data.data.accessToken);
