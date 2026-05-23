@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import Modal from '@/components/Modal';
 import { tasksApi } from '@/lib/endpoints';
@@ -8,6 +8,7 @@ import type { Task, TaskHistory, TaskVoteStatus, HouseMember } from '@/types';
 import VoteProgressBar from './VoteProgressBar';
 import SubmissionTimeline from './SubmissionTimeline';
 import { useTaskPolling } from '@/hooks/useTaskPolling';
+import { resolveProofUrl, isLegacyProofUrl } from '@/lib/proofUrl';
 
 interface Props {
   task: Task | null;
@@ -50,24 +51,46 @@ export default function TaskDetailsModal({
   onResubmit,
   onVote,
 }: Props) {
+  const [detailTask, setDetailTask] = useState<Task | null>(task);
   const [history, setHistory] = useState<TaskHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [voteStatus, setVoteStatus] = useState<TaskVoteStatus | null>(null);
 
-  const isAssignee = task?.assignedTo === currentUserId;
-  const proofUrl = task?.currentSubmission?.imageUrl ?? task?.imageUrl;
+  const isAssignee = detailTask?.assignedTo === currentUserId;
+  const rawProofUrl = detailTask?.currentSubmission?.imageUrl ?? detailTask?.imageUrl;
+  const proofUrl = resolveProofUrl(rawProofUrl);
+  const legacyProof = isLegacyProofUrl(rawProofUrl);
+
+  const refreshDetail = useCallback(async () => {
+    if (!task?.id) return;
+    try {
+      const res = await tasksApi.get(task.id);
+      setDetailTask(res.data.data);
+    } catch {
+      setDetailTask(task);
+    }
+  }, [task]);
 
   useTaskPolling(
     task?.id ?? null,
-    !!task && task.status === 'submitted',
-    setVoteStatus,
+    !!task && detailTask?.status === 'submitted',
+    (vs) => {
+      setVoteStatus(vs);
+      if (vs.votingComplete) {
+        refreshDetail();
+      }
+    },
   );
 
   useEffect(() => {
+    setDetailTask(task);
     if (!task) {
       setHistory(null);
+      setVoteStatus(null);
       return;
     }
+
+    refreshDetail();
     setHistoryLoading(true);
     tasksApi
       .getHistory(task.id)
@@ -80,55 +103,71 @@ export default function TaskDetailsModal({
     } else {
       setVoteStatus(null);
     }
-  }, [task?.id, task?.status]);
+  }, [task?.id, task?.status, refreshDetail]);
+
+  const canVote =
+    detailTask?.status === 'submitted' &&
+    !isAssignee &&
+    !voteStatus?.userVote &&
+    !voteStatus?.votingComplete;
 
   return (
     <Modal open={!!task} onClose={onClose} title="Task Details" size="lg">
-      {task && (
+      {detailTask && (
         <div className="flex flex-col gap-5">
           <div className="grid grid-cols-2 gap-y-4 text-sm">
             <div>
               <p className="font-medium text-neutral-500">Task Title</p>
-              <p className="font-semibold text-neutral-900">{task.title}</p>
+              <p className="font-semibold text-neutral-900">{detailTask.title}</p>
             </div>
             <div>
               <p className="font-medium text-neutral-500">Status</p>
               <div className="mt-1">
-                <StatusBadge status={task.status} />
+                <StatusBadge status={detailTask.status} />
               </div>
             </div>
             <div className="col-span-2">
               <p className="font-medium text-neutral-500">Assigned To</p>
               <p className="font-semibold text-neutral-900">
-                {members.find((m) => m.userId === task.assignedTo)?.user?.name ??
-                  task.assignee?.name ??
+                {members.find((m) => m.userId === detailTask.assignedTo)?.user?.name ??
+                  detailTask.assignee?.name ??
                   '—'}
               </p>
             </div>
             <div>
               <p className="font-medium text-neutral-500">Deadline</p>
               <p className="text-neutral-700">
-                {task.deadline ? format(new Date(task.deadline), 'MMM d, yyyy') : '—'}
+                {detailTask.deadline ? format(new Date(detailTask.deadline), 'MMM d, yyyy') : '—'}
               </p>
             </div>
             <div>
               <p className="font-medium text-neutral-500">Rewards</p>
-              <p className="text-neutral-700">{task.rewardPoints ?? 10} points</p>
+              <p className="text-neutral-700">{detailTask.rewardPoints ?? 10} points</p>
             </div>
           </div>
 
-          {task.status === 'submitted' && (
+          {detailTask.status === 'submitted' && (
             <VoteProgressBar voteStatus={voteStatus} />
           )}
 
-          {proofUrl && (
+          {voteStatus?.userVote && (
+            <p className="text-sm font-medium text-green-700">
+              You voted: <span className="capitalize">{voteStatus.userVote.vote}</span>
+            </p>
+          )}
+
+          {proofUrl ? (
             <div>
               <p className="mb-2 text-sm font-medium text-neutral-500">Current Proof</p>
               <div className="overflow-hidden rounded-lg border border-neutral-200">
                 <img src={proofUrl} alt="Task proof" className="max-h-48 w-full object-cover" />
               </div>
             </div>
-          )}
+          ) : legacyProof ? (
+            <p className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-3 text-sm text-neutral-600">
+              Proof image unavailable (legacy upload).
+            </p>
+          ) : null}
 
           <div>
             <p className="mb-3 text-sm font-semibold text-neutral-800">Submission History</p>
@@ -143,7 +182,7 @@ export default function TaskDetailsModal({
             >
               Close
             </button>
-            {isAssignee && task.status === 'pending' && (
+            {isAssignee && detailTask.status === 'pending' && (
               <button
                 type="button"
                 onClick={onSubmitProof}
@@ -152,7 +191,7 @@ export default function TaskDetailsModal({
                 Submit Proof
               </button>
             )}
-            {isAssignee && task.status === 'disputed' && (
+            {isAssignee && detailTask.status === 'disputed' && (
               <button
                 type="button"
                 onClick={onResubmit}
@@ -161,7 +200,7 @@ export default function TaskDetailsModal({
                 Resubmit Proof
               </button>
             )}
-            {!isAssignee && task.status === 'submitted' && (
+            {canVote && (
               <button
                 type="button"
                 onClick={onVote}

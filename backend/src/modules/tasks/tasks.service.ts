@@ -39,6 +39,15 @@ import * as houseService from '../house/house.service';
 import { logger } from '../../shared/utils/logger';
 import { env } from '../../shared/utils/env';
 import type { UpdateTaskInput } from './tasks.schema';
+import { computeNextRotationDeadline } from './tasks.rotation';
+
+export interface RotationAssignOptions {
+  excludeUserId?: string;
+  choreTitle?: string;
+  spawnedFromTaskId?: string;
+  rewardPoints?: number;
+  penaltyFine?: number;
+}
 
 // ---- Service Functions ----
 
@@ -69,158 +78,310 @@ export async function assignNextTask(
   explicitWeight?: number,
   isRecurring?: boolean,
   cronSchedule?: string,
+  rotationOptions?: RotationAssignOptions,
 ) {
-  // Pre-check: Verify the requesting user is an active member
   await houseService.verifyMembership(houseId, requestingUserId);
 
-  // Validate deadline is in the future
   const deadline = new Date(deadlineStr);
   if (deadline <= new Date()) {
     throw new AppError('Deadline must be in the future', 400);
   }
 
-  // Admin check if explicitly assigning to someone else
   if (explicitAssignedTo && explicitAssignedTo !== requestingUserId) {
     await houseService.verifyAdminRole(houseId, requestingUserId);
   }
 
-  const rewardPoints = explicitWeight ? explicitWeight * 10 : undefined;
-  const penaltyFine = explicitWeight ? explicitWeight * 5 : undefined;
+  const rewardPoints =
+    rotationOptions?.rewardPoints ??
+    (explicitWeight ? explicitWeight * 10 : undefined);
+  const penaltyFine =
+    rotationOptions?.penaltyFine ??
+    (explicitWeight ? explicitWeight * 5 : undefined);
 
-  // ---- BEGIN CRITICAL SECTION ----
-  // Interactive transaction with row-level locking
   const task = await prisma.$transaction(async (tx) => {
-    // Step 1: Lock the house row to prevent concurrent index reads
-    // This is the key concurrency control mechanism.
-    // Any concurrent transaction attempting to lock the same row will BLOCK
-    // here until this transaction commits or rolls back.
-    const lockedRows = await tasksRepo.lockHouseForUpdate(tx, houseId);
-
-    if (lockedRows.length === 0) {
-      throw NotFoundError('House');
-    }
-
-    const currentIndex = lockedRows[0].current_index;
-
-    // Step 2: Fetch all active members in deterministic order
-    // ORDER BY joined_at ASC ensures the rotation sequence is consistent
-    const activeMembers = await tasksRepo.getActiveMembersInTx(tx, houseId);
-
-    if (activeMembers.length === 0) {
-      throw new AppError('Cannot assign task: no active members in house', 400);
-    }
-
-    // Step 3: Calculate which member gets this task
-    let assignedMemberId: string;
-    let assignedMemberName: string;
-    let nextIndex = currentIndex; // default to no increment
-
-    if (explicitAssignedTo) {
-      const member = activeMembers.find((m) => m.userId === explicitAssignedTo);
-      if (!member) {
-        throw new AppError('Cannot assign task: designated user is not an active member', 400);
-      }
-      assignedMemberId = member.userId;
-      assignedMemberName = member.user.name;
-    } else {
-      const workloadStats = await tasksRepo.getMemberWorkloadStats(tx, houseId);
-      const maxOpen = env.TASK_MAX_OPEN_PER_USER;
-
-      const candidates = workloadStats.map((stat, index) => {
-        const excluded = stat.openTasks >= maxOpen;
-        const score = stat.openTasks * 10 - stat.daysSinceLastAssignment;
-        return {
-          userId: stat.userId,
-          name: stat.name,
-          index,
-          openTasks: stat.openTasks,
-          daysSinceLastAssignment: Math.round(stat.daysSinceLastAssignment * 10) / 10,
-          score: Math.round(score * 100) / 100,
-          excluded,
-          exclusionReason:
-            excluded ? `openTasks (${stat.openTasks}) >= max (${maxOpen})` : null,
-        };
-      });
-
-      const eligible = candidates.filter((c) => !c.excluded);
-      if (eligible.length === 0) {
-        throw new AppError(
-          'Cannot assign task: all active members are at their open-task limit',
-          400,
-        );
-      }
-
-      eligible.sort((a, b) => {
-        if (a.score !== b.score) return a.score - b.score;
-        const rotationOrderA =
-          (a.index - (currentIndex % activeMembers.length) + activeMembers.length) %
-          activeMembers.length;
-        const rotationOrderB =
-          (b.index - (currentIndex % activeMembers.length) + activeMembers.length) %
-          activeMembers.length;
-        return rotationOrderA - rotationOrderB;
-      });
-
-      const selected = eligible[0];
-      assignedMemberId = selected.userId;
-      assignedMemberName = selected.name;
-      nextIndex = (selected.index + 1) % activeMembers.length;
-
-      logger.info(
-        {
-          event: 'rotation_decision',
-          houseId,
-          currentIndex,
-          maxOpenPerUser: maxOpen,
-          candidates,
-          selected: {
-            userId: selected.userId,
-            name: selected.name,
-            reason: `lowest score (${selected.score}) with ${selected.openTasks} open task(s), ${selected.daysSinceLastAssignment} days since last assignment`,
-          },
-        },
-        'Rotation engine: fair assignment decision',
-      );
-    }
-
-    if (explicitAssignedTo) {
-      logger.info(
-        {
-          houseId,
-          assignedTo: assignedMemberId,
-          assignedName: assignedMemberName,
-          mode: 'explicit',
-        },
-        'Rotation engine: explicit assignment (index not advanced)',
-      );
-    }
-
-    // Step 4: Create the task
-    const createdTask = await tasksRepo.createTaskInTx(tx, {
+    return executeAssignmentInTx(tx, {
       houseId,
-      assignedTo: assignedMemberId,
       title,
       deadline,
+      explicitAssignedTo,
       rewardPoints,
       penaltyFine,
       isRecurring,
       cronSchedule,
+      rotationOptions,
     });
-
-    if (nextIndex !== currentIndex) {
-      await tasksRepo.updateHouseIndexInTx(tx, houseId, nextIndex);
-    }
-
-    logger.info(
-      { houseId, oldIndex: currentIndex, newIndex: nextIndex, taskId: createdTask.id },
-      'Rotation engine: index updated',
-    );
-
-    return createdTask;
   });
-  // ---- END CRITICAL SECTION ----
 
   return task;
+}
+
+interface AssignmentParams {
+  houseId: string;
+  title: string;
+  deadline: Date;
+  explicitAssignedTo?: string;
+  rewardPoints?: number;
+  penaltyFine?: number;
+  isRecurring?: boolean;
+  cronSchedule?: string;
+  rotationOptions?: RotationAssignOptions;
+}
+
+async function executeAssignmentInTx(
+  tx: Parameters<typeof tasksRepo.lockHouseForUpdate>[0],
+  params: AssignmentParams,
+) {
+  const {
+    houseId,
+    title,
+    deadline,
+    explicitAssignedTo,
+    rewardPoints,
+    penaltyFine,
+    isRecurring,
+    cronSchedule,
+    rotationOptions,
+  } = params;
+
+  const lockedRows = await tasksRepo.lockHouseForUpdate(tx, houseId);
+  if (lockedRows.length === 0) {
+    throw NotFoundError('House');
+  }
+
+  const currentIndex = lockedRows[0].current_index;
+  const activeMembers = await tasksRepo.getActiveMembersInTx(tx, houseId);
+
+  if (activeMembers.length === 0) {
+    throw new AppError('Cannot assign task: no active members in house', 400);
+  }
+
+  let assignedMemberId: string;
+  let assignedMemberName: string;
+  let nextIndex = currentIndex;
+
+  if (explicitAssignedTo) {
+    const member = activeMembers.find((m) => m.userId === explicitAssignedTo);
+    if (!member) {
+      throw new AppError('Cannot assign task: designated user is not an active member', 400);
+    }
+    assignedMemberId = member.userId;
+    assignedMemberName = member.user.name;
+  } else {
+    const choreTitle = rotationOptions?.choreTitle ?? title;
+    const choreStats = await tasksRepo.getChoreRotationStats(tx, houseId, choreTitle);
+    const maxOpen = env.TASK_MAX_OPEN_PER_USER;
+    const excludeUserId = rotationOptions?.excludeUserId;
+
+    const candidates = choreStats.map((stat) => {
+      const excludedByOpen = stat.openTasks >= maxOpen;
+      const excludedByCompleter = excludeUserId === stat.userId;
+      const excluded = excludedByOpen || excludedByCompleter;
+      const score =
+        stat.openTasks * 10 +
+        stat.openTasksSameTitle * 15 +
+        stat.completedCountSameTitle * 5 -
+        stat.daysSinceLastAssignmentSameTitle * 2;
+
+      return {
+        userId: stat.userId,
+        name: stat.name,
+        index: stat.index,
+        openTasks: stat.openTasks,
+        openTasksSameTitle: stat.openTasksSameTitle,
+        completedCountSameTitle: stat.completedCountSameTitle,
+        daysSinceLastAssignmentSameTitle:
+          Math.round(stat.daysSinceLastAssignmentSameTitle * 10) / 10,
+        score: Math.round(score * 100) / 100,
+        excluded,
+        exclusionReason: excludedByCompleter
+          ? 'completed this chore — excluded from immediate re-assign'
+          : excludedByOpen
+            ? `openTasks (${stat.openTasks}) >= max (${maxOpen})`
+            : null,
+      };
+    });
+
+    let eligible = candidates.filter((c) => !c.excluded);
+
+    if (eligible.length === 0) {
+      eligible = candidates.filter((c) => c.userId !== excludeUserId);
+    }
+    if (eligible.length === 0) {
+      eligible = candidates.filter((c) => !c.excluded || c.exclusionReason?.includes('openTasks'));
+    }
+    if (eligible.length === 0) {
+      throw new AppError(
+        'Cannot assign task: no eligible members for rotation',
+        400,
+      );
+    }
+
+    eligible.sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      const rotationOrderA =
+        (a.index - (currentIndex % activeMembers.length) + activeMembers.length) %
+        activeMembers.length;
+      const rotationOrderB =
+        (b.index - (currentIndex % activeMembers.length) + activeMembers.length) %
+        activeMembers.length;
+      return rotationOrderA - rotationOrderB;
+    });
+
+    const selected = eligible[0];
+    assignedMemberId = selected.userId;
+    assignedMemberName = selected.name;
+    nextIndex = (selected.index + 1) % activeMembers.length;
+
+    logger.info(
+      {
+        event: 'rotation_decision',
+        houseId,
+        choreTitle,
+        excludeUserId,
+        currentIndex,
+        maxOpenPerUser: maxOpen,
+        candidates,
+        selected: {
+          userId: selected.userId,
+          name: selected.name,
+          reason: `lowest score (${selected.score}); ${selected.openTasks} open, ${selected.openTasksSameTitle} same-title open, ${selected.completedCountSameTitle} completed (90d)`,
+        },
+      },
+      'Rotation engine: per-chore fair assignment',
+    );
+  }
+
+  if (explicitAssignedTo) {
+    logger.info(
+      { houseId, assignedTo: assignedMemberId, mode: 'explicit' },
+      'Rotation engine: explicit assignment',
+    );
+  }
+
+  const createdTask = await tasksRepo.createTaskInTx(tx, {
+    houseId,
+    assignedTo: assignedMemberId,
+    title,
+    deadline,
+    rewardPoints,
+    penaltyFine,
+    isRecurring,
+    cronSchedule,
+    spawnedFromTaskId: rotationOptions?.spawnedFromTaskId,
+  });
+
+  if (!explicitAssignedTo && nextIndex !== currentIndex) {
+    await tasksRepo.updateHouseIndexInTx(tx, houseId, nextIndex);
+  }
+
+  return createdTask;
+}
+
+/**
+ * Spawn the next rotation instance after a task is completed.
+ * Idempotent — skips if rotationSpawnedAt is already set.
+ */
+export async function spawnNextChoreInstance(completedTaskId: string) {
+  const completed = await prisma.task.findUnique({
+    where: { id: completedTaskId },
+    select: {
+      id: true,
+      houseId: true,
+      assignedTo: true,
+      title: true,
+      status: true,
+      rotationSpawnedAt: true,
+      createdAt: true,
+      deadline: true,
+      rewardPoints: true,
+      penaltyFine: true,
+      isRecurring: true,
+      cronSchedule: true,
+    },
+  });
+
+  if (!completed || completed.status !== 'completed') {
+    return null;
+  }
+  if (completed.rotationSpawnedAt) {
+    return null;
+  }
+
+  const requester =
+    (
+      await prisma.houseMember.findFirst({
+        where: { houseId: completed.houseId, role: 'admin', status: 'active' },
+        select: { userId: true },
+      })
+    )?.userId ??
+    (
+      await prisma.houseMember.findFirst({
+        where: { houseId: completed.houseId, status: 'active' },
+        select: { userId: true },
+      })
+    )?.userId;
+
+  if (!requester) {
+    logger.warn({ completedTaskId }, 'spawnNextChoreInstance: no active member to act as requester');
+    return null;
+  }
+
+  const newDeadline = computeNextRotationDeadline(
+    completed.cronSchedule,
+    completed.createdAt,
+    completed.deadline,
+  );
+
+  try {
+    const newTask = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ rotation_spawned_at: Date | null }[]>`
+        SELECT rotation_spawned_at FROM tasks WHERE id = ${completedTaskId}::uuid FOR UPDATE
+      `;
+      if (locked[0]?.rotation_spawned_at) {
+        return null;
+      }
+
+      const created = await executeAssignmentInTx(tx, {
+        houseId: completed.houseId,
+        title: completed.title,
+        deadline: newDeadline,
+        rewardPoints: completed.rewardPoints,
+        penaltyFine: Number(completed.penaltyFine),
+        isRecurring: completed.isRecurring,
+        cronSchedule: completed.cronSchedule ?? undefined,
+        rotationOptions: {
+          excludeUserId: completed.assignedTo,
+          choreTitle: completed.title,
+          spawnedFromTaskId: completedTaskId,
+        },
+      });
+
+      await tx.task.update({
+        where: { id: completedTaskId },
+        data: { rotationSpawnedAt: new Date() },
+      });
+
+      return created;
+    });
+
+    if (newTask) {
+      logger.info(
+        {
+          completedTaskId,
+          newTaskId: newTask.id,
+          assignedTo: newTask.assignedTo,
+          title: completed.title,
+          newDeadline,
+        },
+        'Chore rotation: spawned next instance',
+      );
+    }
+
+    return newTask;
+  } catch (err) {
+    logger.error({ err, completedTaskId }, 'spawnNextChoreInstance failed');
+    return null;
+  }
 }
 
 /**
@@ -339,6 +500,10 @@ export async function submitTask(
     `Task submitted (Solo House: ${isSoloHouse})`,
   );
 
+  if (isSoloHouse) {
+    await spawnNextChoreInstance(taskId);
+  }
+
   return updatedTask;
 }
 
@@ -402,18 +567,20 @@ export async function getTaskHistory(userId: string, taskId: string) {
     const isCurrent = sub.id === task.currentSubmissionId;
 
     let outcome: string | null = null;
+    const majorityMet = approved >= rejected && approved > 0 && sub.votes.length > 0;
+
     if (!isCurrent) {
       if (approved > rejected) outcome = 'approved';
       else if (rejected > approved) outcome = 'disputed';
       else if (sub.votes.length > 0) outcome = 'tie';
-    } else if (task.status === 'completed') {
+    } else if (task.status === 'completed' || majorityMet) {
       outcome = 'approved';
     } else if (task.status === 'disputed') {
       outcome = 'disputed';
     } else if (task.status === 'rejected') {
       outcome = 'rejected';
     } else if (task.status === 'submitted') {
-      outcome = 'voting';
+      outcome = majorityMet ? 'approved' : 'voting';
     }
 
     return {

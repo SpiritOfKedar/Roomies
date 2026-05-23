@@ -13,6 +13,7 @@ import {
 } from '../../shared/utils/app-error';
 import * as houseService from '../house/house.service';
 import * as penaltyService from '../penalty/penalty.service';
+import * as tasksService from '../tasks/tasks.service';
 import { logger } from '../../shared/utils/logger';
 import { env } from '../../shared/utils/env';
 
@@ -223,6 +224,10 @@ export async function castVote(
       };
     },
   );
+
+  if (result.finalStatus === 'completed') {
+    await tasksService.spawnNextChoreInstance(taskId);
+  }
 
   return result;
 }

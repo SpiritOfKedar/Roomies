@@ -113,6 +113,7 @@ export async function createTaskInTx(
     penaltyFine?: number;
     isRecurring?: boolean;
     cronSchedule?: string;
+    spawnedFromTaskId?: string;
   },
 ) {
   return tx.task.create({
@@ -126,6 +127,7 @@ export async function createTaskInTx(
       ...(data.penaltyFine !== undefined && { penaltyFine: data.penaltyFine }),
       ...(data.isRecurring !== undefined && { isRecurring: data.isRecurring }),
       ...(data.cronSchedule !== undefined && { cronSchedule: data.cronSchedule }),
+      ...(data.spawnedFromTaskId !== undefined && { spawnedFromTaskId: data.spawnedFromTaskId }),
     },
     select: {
       id: true,
@@ -245,28 +247,35 @@ export async function updateTaskStatusAtomic(
   return findTaskById(taskId);
 }
 
-export interface MemberWorkloadStat {
+export interface ChoreRotationStat {
   userId: string;
   name: string;
   joinedAt: Date;
+  index: number;
   openTasks: number;
-  daysSinceLastAssignment: number;
+  openTasksSameTitle: number;
+  completedCountSameTitle: number;
+  daysSinceLastAssignmentSameTitle: number;
 }
 
 /**
- * Workload stats per active member for fair rotation scoring.
+ * Per-chore rotation stats for fair assignment.
  */
-export async function getMemberWorkloadStats(
+export async function getChoreRotationStats(
   tx: TxClient,
   houseId: string,
-): Promise<MemberWorkloadStat[]> {
+  choreTitle: string,
+): Promise<ChoreRotationStat[]> {
   const members = await getActiveMembersInTx(tx, houseId);
   const openStatuses = ['pending', 'submitted', 'disputed'] as const;
-
-  const stats: MemberWorkloadStat[] = [];
+  const since90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   const now = Date.now();
 
-  for (const member of members) {
+  const stats: ChoreRotationStat[] = [];
+
+  for (let index = 0; index < members.length; index++) {
+    const member = members[index];
+
     const openTasks = await tx.task.count({
       where: {
         houseId,
@@ -275,22 +284,44 @@ export async function getMemberWorkloadStats(
       },
     });
 
-    const lastAssigned = await tx.task.findFirst({
-      where: { houseId, assignedTo: member.userId },
+    const openTasksSameTitle = await tx.task.count({
+      where: {
+        houseId,
+        assignedTo: member.userId,
+        title: choreTitle,
+        status: { in: [...openStatuses] },
+      },
+    });
+
+    const completedCountSameTitle = await tx.task.count({
+      where: {
+        houseId,
+        assignedTo: member.userId,
+        title: choreTitle,
+        status: 'completed',
+        createdAt: { gte: since90d },
+      },
+    });
+
+    const lastSameTitle = await tx.task.findFirst({
+      where: { houseId, assignedTo: member.userId, title: choreTitle },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
 
-    const daysSinceLastAssignment = lastAssigned
-      ? (now - lastAssigned.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+    const daysSinceLastAssignmentSameTitle = lastSameTitle
+      ? (now - lastSameTitle.createdAt.getTime()) / (1000 * 60 * 60 * 24)
       : 999;
 
     stats.push({
       userId: member.userId,
       name: member.user.name,
       joinedAt: member.joinedAt,
+      index,
       openTasks,
-      daysSinceLastAssignment,
+      openTasksSameTitle,
+      completedCountSameTitle,
+      daysSinceLastAssignmentSameTitle,
     });
   }
 

@@ -2,6 +2,7 @@
 
 import { format } from 'date-fns';
 import type { TaskHistory } from '@/types';
+import { resolveProofUrl, isLegacyProofUrl } from '@/lib/proofUrl';
 
 interface Props {
   history: TaskHistory | null;
@@ -64,11 +65,15 @@ export default function SubmissionTimeline({ history, loading }: Props) {
 
             {round.imageUrl && (
               <div className="mt-2 overflow-hidden rounded-lg border border-neutral-200">
-                <img
-                  src={round.imageUrl}
-                  alt={`Proof attempt ${round.attemptNumber}`}
-                  className="max-h-40 w-full object-cover"
-                />
+                {resolveProofUrl(round.imageUrl) ? (
+                  <img
+                    src={resolveProofUrl(round.imageUrl)!}
+                    alt={`Proof attempt ${round.attemptNumber}`}
+                    className="max-h-40 w-full object-cover"
+                  />
+                ) : isLegacyProofUrl(round.imageUrl) ? (
+                  <p className="p-3 text-xs text-neutral-500">Proof unavailable (legacy upload)</p>
+                ) : null}
               </div>
             )}
 

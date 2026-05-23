@@ -133,10 +133,16 @@ model Task {
   resubmissionCount   Int     @default(0) @map("resubmission_count")
   currentSubmissionId String? @unique @map("current_submission_id") @db.Uuid
 
+  // ---------- Rotation Tracking ----------
+  rotationSpawnedAt DateTime? @map("rotation_spawned_at") @db.Timestamptz
+  spawnedFromTaskId String?   @map("spawned_from_task_id") @db.Uuid
+
   // ---------- Relations ----------
   house             House            @relation(fields: [houseId], references: [id], onDelete: Cascade)
   assignee          User             @relation(fields: [assignedTo], references: [id], onDelete: Cascade)
   currentSubmission TaskSubmission?  @relation("CurrentSubmission", fields: [currentSubmissionId], references: [id], onDelete: SetNull)
+  spawnedFromTask   Task?            @relation("TaskRotation", fields: [spawnedFromTaskId], references: [id], onDelete: SetNull)
+  spawnedTasks      Task[]           @relation("TaskRotation")
   submissions       TaskSubmission[] @relation("TaskSubmissions")
   votes             Vote[]
   penalties         Penalty[]

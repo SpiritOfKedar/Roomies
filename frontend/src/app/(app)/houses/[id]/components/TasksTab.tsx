@@ -59,7 +59,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
   const [assignDue, setAssignDue] = useState('');
   const [assignUser, setAssignUser] = useState('');
   const [assignWeight, setAssignWeight] = useState(1);
-  const [assignIsRecurring, setAssignIsRecurring] = useState(false);
+  const [assignIsRecurring, setAssignIsRecurring] = useState(true);
   const [assignCronSchedule, setAssignCronSchedule] = useState('');
   const [assigning, setAssigning] = useState(false);
 
@@ -111,6 +111,13 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (viewTask) {
+      const updated = tasks.find((t) => t.id === viewTask.id);
+      if (updated) setViewTask(updated);
+    }
+  }, [tasks, viewTask?.id]);
+
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
     setAssigning(true);
@@ -131,7 +138,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       setAssignDue('');
       setAssignUser('');
       setAssignWeight(1);
-      setAssignIsRecurring(false);
+      setAssignIsRecurring(true);
       setAssignCronSchedule('');
       load();
     } catch {
@@ -255,10 +262,15 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                   const isAssignee = task.assignedTo === user?.id;
                   const canSubmit = isAssignee && task.status === 'pending';
                   const canResubmit = isAssignee && task.status === 'disputed';
-                  const canVote = task.status === 'submitted' && !isAssignee;
+                  const vs = voteStatuses[task.id];
+                  const canVote =
+                    task.status === 'submitted' &&
+                    !isAssignee &&
+                    !vs?.userVote &&
+                    !vs?.votingComplete;
+                  const hasVoted = !!vs?.userVote;
                   const taskStyle = TASK_ICON_STYLES[idx % TASK_ICON_STYLES.length];
                   const isOverdue = task.status === 'expired' || task.status === 'rejected';
-                  const vs = voteStatuses[task.id];
 
                   return (
                     <tr
@@ -361,7 +373,12 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                             </span>
                           </button>
                         )}
-                        {!canSubmit && !canResubmit && !canVote && (
+                        {hasVoted && task.status === 'submitted' && !isAssignee && (
+                          <span className="mx-auto inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">
+                            Voted
+                          </span>
+                        )}
+                        {!canSubmit && !canResubmit && !canVote && !hasVoted && (
                           <div className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-50 text-neutral-400 opacity-50">
                             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
                               check
@@ -471,9 +488,12 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
               className="rounded border-neutral-300 text-black focus:ring-black"
             />
             <label htmlFor="isRecurring" className="text-sm font-semibold text-neutral-800">
-              Make this a recurring task
+              Make this a recurring chore (auto-rotates when completed)
             </label>
           </div>
+          <p className="col-span-2 -mt-2 text-xs text-neutral-500">
+            Completed chores automatically assign to the next fair housemate. Uncheck for one-off tasks.
+          </p>
           {assignIsRecurring && (
             <div className="col-span-2">
               <label className="mb-1 block text-sm font-semibold text-neutral-800">Repeat Schedule</label>

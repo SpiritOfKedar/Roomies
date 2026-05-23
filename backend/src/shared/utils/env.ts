@@ -45,6 +45,7 @@ const envSchema = z.object({
   // Task / voting
   TASK_MAX_RESUBMISSIONS: z.coerce.number().int().positive().default(3),
   TASK_MAX_OPEN_PER_USER: z.coerce.number().int().positive().default(2),
+  ROTATION_DEFAULT_DEADLINE_DAYS: z.coerce.number().int().positive().default(7),
 
   // File uploads
   UPLOAD_DIR: z.string().default('/app/uploads'),

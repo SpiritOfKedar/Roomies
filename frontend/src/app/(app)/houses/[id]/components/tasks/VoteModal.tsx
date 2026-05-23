@@ -7,6 +7,7 @@ import type { Task, TaskVoteStatus } from '@/types';
 import toast from 'react-hot-toast';
 import VoteProgressBar from './VoteProgressBar';
 import { useTaskPolling } from '@/hooks/useTaskPolling';
+import { resolveProofUrl, isLegacyProofUrl } from '@/lib/proofUrl';
 
 interface Props {
   task: Task | null;
@@ -20,10 +21,12 @@ export default function VoteModal({ task, houseId, onClose, onVoted }: Props) {
   const [voteStatus, setVoteStatus] = useState<TaskVoteStatus | null>(null);
   const [voting, setVoting] = useState(false);
 
-  useTaskPolling(task?.id ?? null, !!task, setVoteStatus);
+  useTaskPolling(task?.id ?? null, !!task && !voteStatus?.userVote, setVoteStatus);
 
-  const proofUrl = task?.currentSubmission?.imageUrl ?? task?.imageUrl;
-  const alreadyVoted = !!voteStatus?.userVote;
+  const rawProofUrl = task?.currentSubmission?.imageUrl ?? task?.imageUrl;
+  const proofUrl = resolveProofUrl(rawProofUrl);
+  const legacyProof = isLegacyProofUrl(rawProofUrl);
+  const alreadyVoted = !!voteStatus?.userVote || !!voteStatus?.votingComplete;
 
   const handleVote = async (vote: 'approve' | 'reject') => {
     if (!task) return;
@@ -65,6 +68,10 @@ export default function VoteModal({ task, houseId, onClose, onVoted }: Props) {
           <div className="w-full overflow-hidden rounded-lg border border-neutral-200">
             <img src={proofUrl} alt="Task proof" className="max-h-64 w-full object-cover" />
           </div>
+        ) : legacyProof ? (
+          <p className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-600">
+            Proof image unavailable (legacy upload). Ask the assignee to re-upload if needed.
+          </p>
         ) : (
           <p className="text-sm italic text-neutral-500">No proof image attached.</p>
         )}
