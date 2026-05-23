@@ -16,7 +16,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 
 COPY prisma ./prisma/
 RUN npx prisma generate
@@ -45,7 +45,7 @@ RUN apk add --no-cache openssl
 
 # Copy only production dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Copy Prisma schema and generated client
 COPY prisma ./prisma/

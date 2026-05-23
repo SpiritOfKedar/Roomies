@@ -47,9 +47,15 @@ const envSchema = z.object({
   TASK_MAX_OPEN_PER_USER: z.coerce.number().int().positive().default(2),
   ROTATION_DEFAULT_DEADLINE_DAYS: z.coerce.number().int().positive().default(7),
 
-  // File uploads
+  // File uploads (local fallback when Cloudinary is not configured)
   UPLOAD_DIR: z.string().default('/app/uploads'),
   UPLOAD_PUBLIC_URL: z.string().default('http://localhost:3005/uploads'),
+
+  // Cloudinary (optional — when all three are set, uploads go to Cloudinary)
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
+  CLOUDINARY_FOLDER: z.string().default('roomies'),
 });
 
 /**

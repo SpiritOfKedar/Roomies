@@ -9,6 +9,7 @@
 
 import { prisma } from '../../shared/db/prisma';
 import { Prisma } from '@prisma/client';
+import { computeReassignmentDeadline } from './tasks.rotation';
 
 // ---- Shared select shape ----
 
@@ -90,8 +91,17 @@ export async function acceptSwapInTx(
   // Guard: both tasks must still be 'pending'
   const tasks = await tx.task.findMany({
     where: { id: { in: [offeredTaskId, requestedTaskId] } },
-    select: { id: true, status: true },
+    select: {
+      id: true,
+      status: true,
+      deadline: true,
+      createdAt: true,
+      cronSchedule: true,
+    },
   });
+
+  const offered = tasks.find((t) => t.id === offeredTaskId);
+  const requested = tasks.find((t) => t.id === requestedTaskId);
 
   for (const task of tasks) {
     if (task.status !== 'pending') {
@@ -99,14 +109,29 @@ export async function acceptSwapInTx(
     }
   }
 
-  // Swap assignedTo atomically
+  if (!offered || !requested) {
+    throw new Error('One or both swap tasks not found');
+  }
+
+  const offeredNewDeadline = computeReassignmentDeadline(
+    offered.cronSchedule,
+    offered.createdAt,
+    offered.deadline,
+  );
+  const requestedNewDeadline = computeReassignmentDeadline(
+    requested.cronSchedule,
+    requested.createdAt,
+    requested.deadline,
+  );
+
+  // Swap assignedTo and refresh deadlines for new assignees
   await tx.task.update({
     where: { id: offeredTaskId },
-    data: { assignedTo: receiverId },
+    data: { assignedTo: receiverId, deadline: offeredNewDeadline },
   });
   await tx.task.update({
     where: { id: requestedTaskId },
-    data: { assignedTo: requesterId },
+    data: { assignedTo: requesterId, deadline: requestedNewDeadline },
   });
 
   // Mark swap accepted

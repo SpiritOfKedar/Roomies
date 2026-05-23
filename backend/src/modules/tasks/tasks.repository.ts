@@ -393,6 +393,7 @@ export async function getTasksByHouse(
 export interface UpdateTaskFieldsData {
   title?: string;
   deadline?: Date;
+  assignedTo?: string;
   rewardPoints?: number;
   penaltyFine?: number;
 }
@@ -411,6 +412,7 @@ export async function updateTaskFields(taskId: string, data: UpdateTaskFieldsDat
     data: {
       ...(data.title !== undefined && { title: data.title }),
       ...(data.deadline !== undefined && { deadline: data.deadline }),
+      ...(data.assignedTo !== undefined && { assignedTo: data.assignedTo }),
       ...(data.rewardPoints !== undefined && { rewardPoints: data.rewardPoints }),
       ...(data.penaltyFine !== undefined && { penaltyFine: data.penaltyFine }),
     },

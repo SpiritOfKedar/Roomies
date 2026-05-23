@@ -24,6 +24,7 @@ import {
 import * as swapRepo from './swap.repository';
 import * as houseService from '../house/house.service';
 import { logger } from '../../shared/utils/logger';
+import { logTaskActivity } from './task-activity.service';
 
 // ---- Service Functions ----
 
@@ -211,6 +212,19 @@ export async function resolveSwap(
         swap.receiverId,
       );
     });
+
+    await Promise.all([
+      logTaskActivity(swap.offeredTaskId, 'swapped', receiverId, {
+        swapId,
+        withTaskId: swap.requestedTaskId,
+        direction: 'received',
+      }),
+      logTaskActivity(swap.requestedTaskId, 'swapped', swap.requesterId, {
+        swapId,
+        withTaskId: swap.offeredTaskId,
+        direction: 'received',
+      }),
+    ]);
 
     logger.info(
       {

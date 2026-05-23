@@ -8,7 +8,22 @@ export function isLegacyProofUrl(url?: string | null): boolean {
   }
 }
 
+function isAllowedImageHost(hostname: string): boolean {
+  if (hostname === 'cdn.roomies.app') return false;
+  if (hostname === 'res.cloudinary.com') return true;
+  if (hostname.endsWith('.cloudinary.com')) return true;
+  // Local / dev uploads
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+  return true;
+}
+
 export function resolveProofUrl(url?: string | null): string | null {
   if (!url || isLegacyProofUrl(url)) return null;
+  try {
+    const { hostname } = new URL(url);
+    if (!isAllowedImageHost(hostname)) return null;
+  } catch {
+    return null;
+  }
   return url;
 }

@@ -70,6 +70,7 @@ export const updateTaskSchema = z
   .object({
     title: z.string().min(2).max(200).trim().optional(),
     deadline: z.string().datetime({ message: 'Deadline must be a valid ISO 8601 datetime' }).optional(),
+    assignedTo: z.string().uuid('Invalid user ID').optional(),
     rewardPoints: z.number().int().positive().optional(),
     penaltyFine: z.number().positive().optional(),
   })
@@ -86,3 +87,19 @@ export const houseTaskParamsSchema = z.object({
 });
 
 export type HouseTaskParams = z.infer<typeof houseTaskParamsSchema>;
+
+// ---- Task comments ----
+
+export const createTaskCommentSchema = z.object({
+  body: z.string().min(1).max(5000).trim(),
+  parentId: z.string().uuid().optional(),
+});
+
+export type CreateTaskCommentInput = z.infer<typeof createTaskCommentSchema>;
+
+export const taskCommentParamsSchema = z.object({
+  id: z.string().uuid('Invalid task ID'),
+  commentId: z.string().uuid('Invalid comment ID'),
+});
+
+export type TaskCommentParams = z.infer<typeof taskCommentParamsSchema>;

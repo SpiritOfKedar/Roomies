@@ -8,13 +8,15 @@ import TasksTab from './components/TasksTab';
 import ExpensesTab from './components/ExpensesTab';
 import LeaderboardTab from './components/LeaderboardTab';
 import SwapsTab from './components/SwapsTab';
+import ChatTab from './components/ChatTab';
 import PenaltiesSection from './components/PenaltiesSection';
 import Modal from '@/components/Modal';
 import toast from 'react-hot-toast';
 
-type Tab = 'tasks' | 'expenses' | 'leaderboard' | 'swaps' | 'penalties';
+type Tab = 'tasks' | 'expenses' | 'leaderboard' | 'swaps' | 'chat' | 'penalties';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'tasks', label: 'Tasks', icon: 'check_circle' },
+  { id: 'chat', label: 'Chat', icon: 'chat' },
   { id: 'expenses', label: 'Expenses', icon: 'payments' },
   { id: 'leaderboard', label: 'Leaderboard', icon: 'leaderboard' },
   { id: 'swaps', label: 'Swaps', icon: 'swap_horiz' },
@@ -183,6 +185,7 @@ export default function HousePage() {
             {/* Tab content */}
             <div className="bg-white rounded-xl border border-[#E5E5E5] p-6 shadow-sm">
               {tab === 'tasks' && <TasksTab house={house} members={members} isAdmin={isAdmin} />}
+              {tab === 'chat' && <ChatTab houseId={id as string} members={members} />}
               {tab === 'expenses' && <ExpensesTab houseId={id as string} members={members} />}
               {tab === 'leaderboard' && <LeaderboardTab houseId={id as string} />}
               {tab === 'swaps' && <SwapsTab houseId={id as string} members={members} />}

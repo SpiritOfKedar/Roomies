@@ -1,6 +1,7 @@
 import api from './api';
 import type {
   AuthTokens, House, PaginatedTasks, Task, VoteResult, TaskVoteStatus, TaskHistory,
+  TaskFeed, TaskCommentNode, HouseMessage,
   PaginatedExpenses, Expense, ExpenseSplit,
   LeaderboardEntry, TaskSwap, Penalty,
 } from '@/types';
@@ -67,8 +68,42 @@ export const tasksApi = {
       `/api/tasks/${taskId}/vote`,
       { vote, ...(reason ? { reason } : {}) }
     ),
-  update: (houseId: string, taskId: string, data: Partial<Task>) =>
+  update: (
+    houseId: string,
+    taskId: string,
+    data: Partial<Pick<Task, 'title' | 'deadline' | 'rewardPoints' | 'penaltyFine'>> & {
+      assignedTo?: string;
+    },
+  ) =>
     api.patch<{ success: boolean; data: Task }>(`/api/houses/${houseId}/tasks/${taskId}`, data),
+  delete: (houseId: string, taskId: string) =>
+    api.delete<{ success: boolean; data: { deleted: boolean; taskId: string } }>(
+      `/api/houses/${houseId}/tasks/${taskId}`,
+    ),
+  getFeed: (taskId: string) =>
+    api.get<{ success: boolean; data: TaskFeed }>(`/api/tasks/${taskId}/feed`),
+  addComment: (taskId: string, form: FormData) =>
+    api.post<{ success: boolean; data: TaskCommentNode }>(
+      `/api/tasks/${taskId}/comments`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    ),
+  deleteComment: (taskId: string, commentId: string) =>
+    api.delete(`/api/tasks/${taskId}/comments/${commentId}`),
+};
+
+// ── House chat ────────────────────────────────────────────────────────────────
+export const messagesApi = {
+  list: (houseId: string, limit = 50, before?: string) =>
+    api.get<{ success: boolean; data: HouseMessage[] }>(`/api/houses/${houseId}/messages`, {
+      params: { limit, ...(before ? { before } : {}) },
+    }),
+  send: (houseId: string, form: FormData) =>
+    api.post<{ success: boolean; data: HouseMessage }>(
+      `/api/houses/${houseId}/messages`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    ),
 };
 
 // ── Expenses ──────────────────────────────────────────────────────────────────

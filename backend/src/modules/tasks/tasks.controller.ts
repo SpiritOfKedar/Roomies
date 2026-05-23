@@ -18,6 +18,8 @@ import type {
   PaginationQuery,
   UpdateTaskInput,
   HouseTaskParams,
+  CreateTaskCommentInput,
+  TaskCommentParams,
 } from './tasks.schema';
 
 /**
@@ -116,4 +118,58 @@ export async function getTaskHistory(req: Request, res: Response): Promise<void>
   const history = await tasksService.getTaskHistory(userId, taskId);
 
   sendSuccess(res, history);
+}
+
+/**
+ * DELETE /api/houses/:id/tasks/:taskId
+ */
+export async function deleteTask(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id: houseId, taskId } = req.params as unknown as HouseTaskParams;
+
+  const result = await tasksService.deleteTask(userId, houseId, taskId);
+
+  sendSuccess(res, result);
+}
+
+/**
+ * GET /api/tasks/:id/feed
+ */
+export async function getTaskFeed(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id: taskId } = req.params as unknown as TaskIdParams;
+
+  const feed = await tasksService.getTaskFeed(userId, taskId);
+
+  sendSuccess(res, feed);
+}
+
+/**
+ * POST /api/tasks/:id/comments
+ */
+export async function createTaskComment(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id: taskId } = req.params as unknown as TaskIdParams;
+  const { body, parentId } = req.body as CreateTaskCommentInput;
+
+  let imageUrl: string | undefined;
+  if (req.file) {
+    imageUrl = await uploadImage(req.file.buffer, req.file.mimetype);
+  }
+
+  const comment = await tasksService.createTaskComment(userId, taskId, body, parentId, imageUrl);
+
+  sendSuccess(res, comment, 201);
+}
+
+/**
+ * DELETE /api/tasks/:id/comments/:commentId
+ */
+export async function deleteTaskComment(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id: taskId, commentId } = req.params as unknown as TaskCommentParams;
+
+  const result = await tasksService.deleteTaskComment(userId, taskId, commentId);
+
+  sendSuccess(res, result);
 }

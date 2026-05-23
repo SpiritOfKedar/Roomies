@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import Modal from '@/components/Modal';
 import { tasksApi } from '@/lib/endpoints';
-import type { Task, TaskHistory, TaskVoteStatus, HouseMember } from '@/types';
+import type { Task, TaskFeed, TaskVoteStatus, HouseMember } from '@/types';
 import VoteProgressBar from './VoteProgressBar';
-import SubmissionTimeline from './SubmissionTimeline';
+import ChoreFeed from './ChoreFeed';
 import { useTaskPolling } from '@/hooks/useTaskPolling';
 import { resolveProofUrl, isLegacyProofUrl } from '@/lib/proofUrl';
 
@@ -15,6 +15,7 @@ interface Props {
   houseId: string;
   members: HouseMember[];
   currentUserId?: string;
+  isAdmin?: boolean;
   onClose: () => void;
   onSubmitProof: () => void;
   onResubmit: () => void;
@@ -46,14 +47,15 @@ export default function TaskDetailsModal({
   houseId,
   members,
   currentUserId,
+  isAdmin,
   onClose,
   onSubmitProof,
   onResubmit,
   onVote,
 }: Props) {
   const [detailTask, setDetailTask] = useState<Task | null>(task);
-  const [history, setHistory] = useState<TaskHistory | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [feed, setFeed] = useState<TaskFeed | null>(null);
+  const [feedLoading, setFeedLoading] = useState(false);
   const [voteStatus, setVoteStatus] = useState<TaskVoteStatus | null>(null);
 
   const isAssignee = detailTask?.assignedTo === currentUserId;
@@ -71,6 +73,16 @@ export default function TaskDetailsModal({
     }
   }, [task]);
 
+  const loadFeed = useCallback(() => {
+    if (!task?.id) return;
+    setFeedLoading(true);
+    tasksApi
+      .getFeed(task.id)
+      .then((res) => setFeed(res.data.data))
+      .catch(() => setFeed(null))
+      .finally(() => setFeedLoading(false));
+  }, [task?.id]);
+
   useTaskPolling(
     task?.id ?? null,
     !!task && detailTask?.status === 'submitted',
@@ -78,6 +90,7 @@ export default function TaskDetailsModal({
       setVoteStatus(vs);
       if (vs.votingComplete) {
         refreshDetail();
+        loadFeed();
       }
     },
   );
@@ -85,25 +98,20 @@ export default function TaskDetailsModal({
   useEffect(() => {
     setDetailTask(task);
     if (!task) {
-      setHistory(null);
+      setFeed(null);
       setVoteStatus(null);
       return;
     }
 
     refreshDetail();
-    setHistoryLoading(true);
-    tasksApi
-      .getHistory(task.id)
-      .then((res) => setHistory(res.data.data))
-      .catch(() => setHistory(null))
-      .finally(() => setHistoryLoading(false));
+    loadFeed();
 
     if (task.status === 'submitted') {
       tasksApi.getVotes(task.id).then((res) => setVoteStatus(res.data.data)).catch(() => {});
     } else {
       setVoteStatus(null);
     }
-  }, [task?.id, task?.status, refreshDetail]);
+  }, [task?.id, task?.status, refreshDetail, loadFeed]);
 
   const canVote =
     detailTask?.status === 'submitted' &&
@@ -170,8 +178,15 @@ export default function TaskDetailsModal({
           ) : null}
 
           <div>
-            <p className="mb-3 text-sm font-semibold text-neutral-800">Submission History</p>
-            <SubmissionTimeline history={history} loading={historyLoading} />
+            <p className="mb-3 text-sm font-semibold text-neutral-800">Activity & Discussion</p>
+            <ChoreFeed
+              taskId={detailTask.id}
+              feed={feed}
+              loading={feedLoading}
+              currentUserId={currentUserId}
+              isAdmin={isAdmin}
+              onRefresh={loadFeed}
+            />
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 border-t border-neutral-100 pt-4">

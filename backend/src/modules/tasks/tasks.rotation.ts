@@ -25,3 +25,15 @@ export function computeNextRotationDeadline(
   const clampedMs = Math.min(maxMs, Math.max(minMs, durationMs > 0 ? durationMs : defaultMs));
   return new Date(now.getTime() + clampedMs);
 }
+
+/**
+ * Recompute deadline when a task is reassigned (swap or admin).
+ * Uses cron next interval when scheduled; otherwise preserves the original window length.
+ */
+export function computeReassignmentDeadline(
+  cronSchedule: string | null | undefined,
+  createdAt: Date,
+  previousDeadline: Date,
+): Date {
+  return computeNextRotationDeadline(cronSchedule, createdAt, previousDeadline);
+}

@@ -139,6 +139,45 @@ export interface TaskHistory {
   rounds: TaskHistoryRound[];
 }
 
+export interface TaskFeedItem {
+  id: string;
+  kind: 'activity' | 'submission' | 'comment';
+  createdAt: string;
+  taskId: string;
+  data: Record<string, unknown>;
+}
+
+export interface TaskCommentNode {
+  id: string;
+  taskId: string;
+  userId: string;
+  parentId: string | null;
+  body: string;
+  imageUrl?: string | null;
+  createdAt: string;
+  user: { id: string; name: string };
+  replies: TaskCommentNode[];
+}
+
+export interface TaskFeed {
+  taskId: string;
+  title: string;
+  status: string;
+  taskIds: string[];
+  items: TaskFeedItem[];
+  comments: TaskCommentNode[];
+}
+
+export interface HouseMessage {
+  id: string;
+  houseId: string;
+  userId: string;
+  body: string;
+  imageUrl?: string | null;
+  createdAt: string;
+  user: { id: string; name: string };
+}
+
 // ── Expenses ──────────────────────────────────────────────────────────────────
 export type SplitStatus = 'unpaid' | 'settled';
 

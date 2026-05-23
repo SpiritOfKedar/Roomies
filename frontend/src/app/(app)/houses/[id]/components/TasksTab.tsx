@@ -71,6 +71,11 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
   const [voteTask, setVoteTask] = useState<Task | null>(null);
   const [resubmitTask, setResubmitTask] = useState<Task | null>(null);
   const [viewTask, setViewTask] = useState<Task | null>(null);
+  const [editTask, setEditTask] = useState<Task | null>(null);
+  const [editAssignee, setEditAssignee] = useState('');
+  const [editDue, setEditDue] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const limit = 10;
 
@@ -169,6 +174,48 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       toast.error('Failed to assign task');
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const openEditModal = (task: Task) => {
+    setEditTask(task);
+    setEditAssignee(task.assignedTo);
+    setEditDue(task.deadline ? task.deadline.slice(0, 10) : '');
+  };
+
+  const handleEditTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTask) return;
+    setEditing(true);
+    try {
+      await tasksApi.update(houseId, editTask.id, {
+        ...(editAssignee !== editTask.assignedTo ? { assignedTo: editAssignee } : {}),
+        ...(editDue
+          ? { deadline: new Date(editDue + 'T23:59:59.000Z').toISOString() }
+          : {}),
+      });
+      toast.success('Task updated');
+      setEditTask(null);
+      load();
+    } catch {
+      toast.error('Failed to update task');
+    } finally {
+      setEditing(false);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!editTask || !confirm('Delete this pending chore? This cannot be undone.')) return;
+    setDeleting(true);
+    try {
+      await tasksApi.delete(houseId, editTask.id);
+      toast.success('Task deleted');
+      setEditTask(null);
+      load();
+    } catch {
+      toast.error('Failed to delete task');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -402,7 +449,22 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                             Voted
                           </span>
                         )}
-                        {!canSubmit && !canResubmit && !canVote && !hasVoted && (
+                        {isAdmin && task.status === 'pending' && (
+                          <button
+                            onClick={() => openEditModal(task)}
+                            className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 transition-all hover:bg-neutral-800 hover:text-white"
+                            title="Edit / Delete"
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                              edit
+                            </span>
+                          </button>
+                        )}
+                        {!canSubmit &&
+                          !canResubmit &&
+                          !canVote &&
+                          !hasVoted &&
+                          !(isAdmin && task.status === 'pending') && (
                           <div className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-50 text-neutral-400 opacity-50">
                             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
                               check
@@ -444,6 +506,61 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
           </button>
         </div>
       )}
+
+      <Modal open={!!editTask} onClose={() => setEditTask(null)} title="Edit Task">
+        {editTask && (
+          <form onSubmit={handleEditTask} className="flex flex-col gap-4">
+            <p className="text-sm font-medium text-neutral-800">{editTask.title}</p>
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Assign To</label>
+              <select
+                className="w-full rounded-lg border border-neutral-200 px-3 py-2"
+                value={editAssignee}
+                onChange={(e) => setEditAssignee(e.target.value)}
+              >
+                {members.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.user?.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Due Date</label>
+              <input
+                type="date"
+                className="w-full rounded-lg border border-neutral-200 px-3 py-2"
+                value={editDue}
+                onChange={(e) => setEditDue(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                disabled={deleting}
+                onClick={handleDeleteTask}
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-lg bg-neutral-100 py-2 font-semibold"
+                onClick={() => setEditTask(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 rounded-lg bg-black py-2 font-semibold text-white"
+                disabled={editing}
+              >
+                {editing ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
 
       <Modal open={showAssign} onClose={() => setShowAssign(false)} title="Assign Task" size="lg">
         <form onSubmit={handleAssign} className="grid grid-cols-2 gap-4">
@@ -617,6 +734,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
         houseId={houseId}
         members={members}
         currentUserId={user?.id}
+        isAdmin={isAdmin}
         onClose={() => setViewTask(null)}
         onSubmitProof={() => {
           if (viewTask) {

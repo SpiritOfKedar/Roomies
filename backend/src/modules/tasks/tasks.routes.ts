@@ -26,6 +26,8 @@ import {
   paginationQuerySchema,
   updateTaskSchema,
   houseTaskParamsSchema,
+  createTaskCommentSchema,
+  taskCommentParamsSchema,
 } from './tasks.schema';
 
 /**
@@ -79,6 +81,16 @@ houseTaskRoutes.patch(
   asyncHandler(tasksController.updateTask),
 );
 
+/**
+ * DELETE /api/houses/:id/tasks/:taskId
+ * Admin-only delete of a pending task.
+ */
+houseTaskRoutes.delete(
+  '/:taskId',
+  validate({ params: houseTaskParamsSchema }),
+  asyncHandler(tasksController.deleteTask),
+);
+
 // ---- Task-scoped routes (/api/tasks) ----
 export const taskRoutes = Router();
 
@@ -112,4 +124,23 @@ taskRoutes.get(
   '/:id/history',
   validate({ params: taskIdParamsSchema }),
   asyncHandler(tasksController.getTaskHistory),
+);
+
+taskRoutes.get(
+  '/:id/feed',
+  validate({ params: taskIdParamsSchema }),
+  asyncHandler(tasksController.getTaskFeed),
+);
+
+taskRoutes.post(
+  '/:id/comments',
+  upload.single('image'),
+  validate({ params: taskIdParamsSchema, body: createTaskCommentSchema }),
+  asyncHandler(tasksController.createTaskComment),
+);
+
+taskRoutes.delete(
+  '/:id/comments/:commentId',
+  validate({ params: taskCommentParamsSchema }),
+  asyncHandler(tasksController.deleteTaskComment),
 );

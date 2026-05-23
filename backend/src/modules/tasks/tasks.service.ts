@@ -39,7 +39,11 @@ import * as houseService from '../house/house.service';
 import { logger } from '../../shared/utils/logger';
 import { env } from '../../shared/utils/env';
 import type { UpdateTaskInput } from './tasks.schema';
-import { computeNextRotationDeadline } from './tasks.rotation';
+import { computeNextRotationDeadline, computeReassignmentDeadline } from './tasks.rotation';
+import * as houseRepo from '../house/house.repository';
+import * as commentsRepo from './task-comments.repository';
+import { logTaskActivity } from './task-activity.service';
+import { buildTaskFeed } from './task-feed.service';
 
 export interface RotationAssignOptions {
   excludeUserId?: string;
@@ -291,6 +295,20 @@ async function executeAssignmentInTx(
     cronSchedule,
     spawnedFromTaskId: rotationOptions?.spawnedFromTaskId,
   });
+
+  await logTaskActivity(
+    createdTask.id,
+    rotationOptions?.spawnedFromTaskId ? 'rotated' : 'assigned',
+    explicitAssignedTo ? undefined : null,
+    {
+      title,
+      assignedTo: assignedMemberId,
+      assigneeName: assignedMemberName,
+      deadline: deadline.toISOString(),
+      spawnedFromTaskId: rotationOptions?.spawnedFromTaskId ?? null,
+    },
+    tx,
+  );
 
   if (!explicitAssignedTo && nextIndex !== currentIndex) {
     await tasksRepo.updateHouseIndexInTx(tx, houseId, nextIndex);
@@ -544,6 +562,13 @@ export async function submitTask(
     `Task submitted (Solo House: ${isSoloHouse})`,
   );
 
+  await logTaskActivity(taskId, 'submitted', userId, {
+    attemptNumber: nextAttemptNumber,
+    imageUrl: imageUrl ?? null,
+    clarification: clarification?.trim() || null,
+    isResubmit,
+  });
+
   if (isSoloHouse) {
     await completeAndRotateTask(taskId);
   }
@@ -699,24 +724,147 @@ export async function updateTask(
     );
   }
 
-  // 4. Deadline validation (if being updated)
+  // 4. Validate assignee if changing
+  if (data.assignedTo !== undefined) {
+    const isMember = await houseRepo.isActiveMember(houseId, data.assignedTo);
+    if (!isMember) {
+      throw new AppError('assignedTo must be an active house member', 400);
+    }
+  }
+
+  // 5. Deadline validation / auto-reset on reassignment
   let deadline: Date | undefined;
   if (data.deadline) {
     deadline = new Date(data.deadline);
     if (deadline <= new Date()) {
       throw new AppError('New deadline must be in the future', 400);
     }
+  } else if (data.assignedTo !== undefined && data.assignedTo !== task.assignedTo) {
+    deadline = computeReassignmentDeadline(task.cronSchedule, task.createdAt, task.deadline);
   }
 
-  // 5. Apply update
+  // 6. Apply update
   const updated = await tasksRepo.updateTaskFields(taskId, {
     ...(data.title !== undefined && { title: data.title }),
     ...(deadline !== undefined && { deadline }),
+    ...(data.assignedTo !== undefined && { assignedTo: data.assignedTo }),
     ...(data.rewardPoints !== undefined && { rewardPoints: data.rewardPoints }),
     ...(data.penaltyFine !== undefined && { penaltyFine: data.penaltyFine }),
+  });
+
+  await logTaskActivity(taskId, 'admin_edit', requestingUserId, {
+    changes: data,
+    newAssignedTo: data.assignedTo ?? task.assignedTo,
+    newDeadline: deadline?.toISOString() ?? task.deadline.toISOString(),
   });
 
   logger.info({ taskId, houseId, requestingUserId, changes: data }, 'Admin mutated pending task');
 
   return updated;
+}
+
+/**
+ * Admin delete of a pending task.
+ */
+export async function deleteTask(
+  requestingUserId: string,
+  houseId: string,
+  taskId: string,
+) {
+  await houseService.verifyAdminRole(houseId, requestingUserId);
+
+  const task = await tasksRepo.findTaskById(taskId);
+  if (!task || task.houseId !== houseId) {
+    throw NotFoundError('Task');
+  }
+
+  if (task.status !== 'pending') {
+    throw new AppError(
+      `Cannot delete task in state '${task.status}'. Only 'pending' tasks can be deleted.`,
+      400,
+    );
+  }
+
+  await prisma.task.delete({ where: { id: taskId } });
+
+  logger.info({ taskId, houseId, requestingUserId }, 'Admin deleted pending task');
+
+  return { deleted: true, taskId };
+}
+
+/**
+ * Unified chore feed (lineage + submissions + activity + comments).
+ */
+export async function getTaskFeed(userId: string, taskId: string) {
+  const task = await tasksRepo.findTaskById(taskId);
+  if (!task) throw NotFoundError('Task');
+
+  await houseService.verifyMembership(task.houseId, userId);
+
+  const feed = await buildTaskFeed(taskId);
+
+  return {
+    taskId,
+    title: task.title,
+    status: task.status,
+    taskIds: feed.taskIds,
+    items: feed.items,
+    comments: feed.comments,
+  };
+}
+
+/**
+ * Add a threaded comment on a chore.
+ */
+export async function createTaskComment(
+  userId: string,
+  taskId: string,
+  body: string,
+  parentId?: string,
+  imageUrl?: string,
+) {
+  const task = await tasksRepo.findTaskById(taskId);
+  if (!task) throw NotFoundError('Task');
+
+  await houseService.verifyMembership(task.houseId, userId);
+
+  if (parentId) {
+    const parent = await commentsRepo.findCommentById(parentId);
+    if (!parent || parent.taskId !== taskId) {
+      throw new AppError('Parent comment not found on this task', 400);
+    }
+  }
+
+  return commentsRepo.createComment({
+    taskId,
+    userId,
+    body,
+    parentId,
+    imageUrl,
+  });
+}
+
+/**
+ * Delete own comment or any comment as admin.
+ */
+export async function deleteTaskComment(
+  userId: string,
+  taskId: string,
+  commentId: string,
+) {
+  const comment = await commentsRepo.findCommentById(commentId);
+  if (!comment || comment.taskId !== taskId) {
+    throw NotFoundError('Comment');
+  }
+
+  await houseService.verifyMembership(comment.task.houseId, userId);
+
+  const isAdmin = await houseRepo.isActiveAdmin(comment.task.houseId, userId);
+  if (comment.userId !== userId && !isAdmin) {
+    throw ForbiddenError('You can only delete your own comments');
+  }
+
+  await commentsRepo.deleteComment(commentId);
+
+  return { deleted: true, commentId };
 }
