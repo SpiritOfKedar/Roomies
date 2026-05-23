@@ -40,7 +40,15 @@ const envSchema = z.object({
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(4).max(31).default(12),
 
   // CORS
-  CORS_ORIGIN: z.string().default('http://localhost:3001'),
+  CORS_ORIGIN: z.string().default('http://localhost:3000'),
+
+  // Task / voting
+  TASK_MAX_RESUBMISSIONS: z.coerce.number().int().positive().default(3),
+  TASK_MAX_OPEN_PER_USER: z.coerce.number().int().positive().default(2),
+
+  // File uploads
+  UPLOAD_DIR: z.string().default('/app/uploads'),
+  UPLOAD_PUBLIC_URL: z.string().default('http://localhost:3005/uploads'),
 });
 
 /**

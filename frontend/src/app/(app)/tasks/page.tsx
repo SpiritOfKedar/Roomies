@@ -1,7 +1,9 @@
 'use client';
+
+import Link from 'next/link';
 import { useState, useEffect, useCallback } from 'react';
 import { housesApi, tasksApi } from '@/lib/endpoints';
-import type { House, Task, HouseMember } from '@/types';
+import type { House, Task } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import Modal from '@/components/Modal';
 import toast from 'react-hot-toast';
@@ -13,12 +15,12 @@ const STATUS_STYLES: Record<string, string> = {
   completed: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
   rejected:  'bg-red-50 text-red-700 border border-red-200',
   expired:   'bg-neutral-100 text-neutral-500 border border-neutral-200',
-  disputed:  'bg-purple-50 text-purple-700 border border-purple-200',
+  disputed:  'bg-amber-50 text-amber-800 border border-amber-200',
 };
 
 const TASK_ICONS = ['mop', 'local_laundry_service', 'restaurant', 'recycling', 'vacuum', 'kitchen'];
 
-type FilterStatus = 'all' | 'pending' | 'submitted' | 'completed' | 'rejected' | 'expired';
+type FilterStatus = 'all' | 'pending' | 'submitted' | 'completed' | 'rejected' | 'expired' | 'disputed';
 
 export default function TasksPage() {
   const { user } = useAuth();
@@ -27,6 +29,7 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [showSubmit, setShowSubmit] = useState<Task | null>(null);
+  const [showResubmit, setShowResubmit] = useState<Task | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -78,6 +81,31 @@ export default function TasksPage() {
     }
   };
 
+  const handleResubmitProof = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showResubmit) return;
+    const clarification = (e.target as HTMLFormElement).clarification?.value;
+    if (!clarification?.trim()) {
+      toast.error('Clarification is required');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const fd = new FormData();
+      if (proofFile) fd.append('proof', proofFile);
+      fd.append('note', clarification.trim());
+      await tasksApi.submit(showResubmit.houseId, showResubmit.id, fd);
+      toast.success('Proof resubmitted!');
+      setShowResubmit(null);
+      setProofFile(null);
+      load();
+    } catch {
+      toast.error('Failed to resubmit proof');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const filtered = filter === 'all'
     ? allTasks
     : allTasks.filter(t => t.task.status === filter);
@@ -92,6 +120,7 @@ export default function TasksPage() {
     completed: allTasks.filter(t => t.task.status === 'completed').length,
     rejected: allTasks.filter(t => t.task.status === 'rejected').length,
     expired: allTasks.filter(t => t.task.status === 'expired').length,
+    disputed: allTasks.filter(t => t.task.status === 'disputed').length,
   };
 
   return (
@@ -140,7 +169,7 @@ export default function TasksPage() {
 
       {/* Filter tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {(['all', 'pending', 'submitted', 'completed', 'rejected', 'expired'] as FilterStatus[]).map(f => (
+        {(['all', 'pending', 'submitted', 'disputed', 'completed', 'rejected', 'expired'] as FilterStatus[]).map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -187,6 +216,7 @@ export default function TasksPage() {
                     isOwn
                     userId={user?.id}
                     onSubmit={() => setShowSubmit(task)}
+                    onResubmit={() => setShowResubmit(task)}
                   />
                 ))}
               </div>
@@ -209,6 +239,7 @@ export default function TasksPage() {
                     isOwn={false}
                     userId={user?.id}
                     onSubmit={() => {}}
+                    onResubmit={() => {}}
                   />
                 ))}
               </div>
@@ -240,21 +271,59 @@ export default function TasksPage() {
           </div>
         </form>
       </Modal>
+
+      <Modal open={!!showResubmit} onClose={() => setShowResubmit(null)} title="Resubmit Proof">
+        <form onSubmit={handleResubmitProof} className="flex flex-col gap-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Your submission was disputed. Add clarification and optionally a new image.
+          </div>
+          <p className="text-sm text-[#737373]">
+            Task: <strong className="text-[#171717]">{showResubmit?.title}</strong>
+          </p>
+          <div>
+            <label className="label">Updated proof image</label>
+            <input
+              className="input"
+              type="file"
+              accept="image/*"
+              onChange={e => setProofFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div>
+            <label className="label">Clarification *</label>
+            <textarea
+              name="clarification"
+              className="input resize-none"
+              rows={3}
+              required
+              placeholder="Explain your resubmission…"
+            />
+          </div>
+          <div className="flex gap-3 mt-2">
+            <button type="button" className="btn-secondary flex-1" onClick={() => setShowResubmit(null)}>Cancel</button>
+            <button type="submit" className="btn-primary flex-1" disabled={submitting}>
+              {submitting ? 'Submitting…' : 'Resubmit'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
 
 /* ── Task Row Component ─────────────────────────────────────────────────────── */
-function TaskRow({ task, house, icon, isOwn, userId, onSubmit }: {
+function TaskRow({ task, house, icon, isOwn, userId, onSubmit, onResubmit }: {
   task: Task;
   house: House;
   icon: string;
   isOwn: boolean;
   userId?: string;
   onSubmit: () => void;
+  onResubmit: () => void;
 }) {
   const overdue = task.status === 'pending' && isPast(new Date(task.deadline));
   const canSubmit = isOwn && task.status === 'pending';
+  const canResubmit = isOwn && task.status === 'disputed';
 
   return (
     <div className={`card !p-0 overflow-hidden transition-all hover:shadow-md ${overdue ? 'ring-1 ring-red-200' : ''}`}>
@@ -308,13 +377,21 @@ function TaskRow({ task, house, icon, isOwn, userId, onSubmit }: {
             )}
           </div>
           {canSubmit && (
-            <button
-              onClick={onSubmit}
-              className="btn-primary !py-2 !px-4 !text-xs"
-            >
+            <button onClick={onSubmit} className="btn-primary !py-2 !px-4 !text-xs">
               Submit
             </button>
           )}
+          {canResubmit && (
+            <button onClick={onResubmit} className="btn-primary !py-2 !px-4 !text-xs !bg-amber-600">
+              Resubmit
+            </button>
+          )}
+          <Link
+            href={`/houses/${house.id}?tab=tasks`}
+            className="text-xs font-semibold text-neutral-500 hover:text-black"
+          >
+            View in house →
+          </Link>
         </div>
       </div>
     </div>

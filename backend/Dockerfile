@@ -28,7 +28,7 @@ WORKDIR /app
 COPY . .
 
 # Run migrations then start dev server
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run dev"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma generate && npm run dev"]
 
 # ---- Stage 3: Build ----
 FROM base AS build
@@ -62,4 +62,4 @@ USER appuser
 EXPOSE 3000
 
 # Run migrations then start
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/app.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma generate && node dist/app.js"]

@@ -129,13 +129,19 @@ model Task {
   aiScore    Float?   @map("ai_score")
   aiVerdict  String?  @map("ai_verdict") @db.Text
 
+  // ---------- Re-submission Tracking ----------
+  resubmissionCount   Int     @default(0) @map("resubmission_count")
+  currentSubmissionId String? @unique @map("current_submission_id") @db.Uuid
+
   // ---------- Relations ----------
-  house          House      @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  assignee       User       @relation(fields: [assignedTo], references: [id], onDelete: Cascade)
-  votes          Vote[]
-  penalties      Penalty[]
-  offeredSwaps   TaskSwap[] @relation("OfferedTask")
-  requestedSwaps TaskSwap[] @relation("RequestedTask")
+  house             House            @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  assignee          User             @relation(fields: [assignedTo], references: [id], onDelete: Cascade)
+  currentSubmission TaskSubmission?  @relation("CurrentSubmission", fields: [currentSubmissionId], references: [id], onDelete: SetNull)
+  submissions       TaskSubmission[] @relation("TaskSubmissions")
+  votes             Vote[]
+  penalties         Penalty[]
+  offeredSwaps      TaskSwap[]       @relation("OfferedTask")
+  requestedSwaps    TaskSwap[]       @relation("RequestedTask")
 
   // ---------- Indexes ----------
   @@index([houseId])
@@ -146,28 +152,54 @@ model Task {
 }
 
 // =============================================================================
-// VOTES
+// TASK SUBMISSIONS
 // =============================================================================
-// Records per-user approval/rejection decisions on submitted tasks.
-// The UNIQUE constraint on (task_id, user_id) enforces one vote per user
-// per task at the database level — preventing double-voting even under
-// concurrent requests.
+// Each proof upload creates a submission record (voting round).
+// Prior submissions and their votes are preserved for history/timeline.
 // =============================================================================
-model Vote {
-  id        String   @id @default(uuid()) @db.Uuid
-  taskId    String   @map("task_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  vote      String   @db.Text // 'approve' | 'reject'
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+model TaskSubmission {
+  id             String   @id @default(uuid()) @db.Uuid
+  taskId         String   @map("task_id") @db.Uuid
+  attemptNumber  Int      @map("attempt_number")
+  imageUrl       String?  @map("image_url") @db.Text
+  clarification  String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   // ---------- Relations ----------
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task           Task  @relation("TaskSubmissions", fields: [taskId], references: [id], onDelete: Cascade)
+  currentForTask Task? @relation("CurrentSubmission")
+  votes          Vote[]
+
+  @@unique([taskId, attemptNumber])
+  @@index([taskId])
+  @@map("task_submissions")
+}
+
+// =============================================================================
+// VOTES
+// =============================================================================
+// Records per-user approval/rejection decisions on a specific submission round.
+// The UNIQUE constraint on (submission_id, user_id) enforces one vote per user
+// per voting round at the database level.
+// =============================================================================
+model Vote {
+  id           String   @id @default(uuid()) @db.Uuid
+  taskId       String   @map("task_id") @db.Uuid
+  submissionId String   @map("submission_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  vote         String   @db.Text // 'approve' | 'reject'
+  reason       String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // ---------- Relations ----------
+  task       Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submission TaskSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // ---------- Constraints ----------
-  // One vote per user per task — enforced at DB level
-  @@unique([taskId, userId])
+  @@unique([submissionId, userId])
   @@index([taskId])
+  @@index([submissionId])
   @@map("votes")
 }
 

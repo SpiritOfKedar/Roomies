@@ -49,10 +49,13 @@ export interface HouseWithMembers {
  * @returns The created house record
  */
 export async function createHouse(data: CreateHouseData) {
+  // Generate random 6-character alphanumeric string
+  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
   return prisma.house.create({
     data: {
       name: data.name,
       createdBy: data.createdBy,
+      inviteCode,
     },
     select: {
       id: true,

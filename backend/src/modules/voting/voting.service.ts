@@ -1,3 +1,9 @@
+/**
+ * =============================================================================
+ * Voting Service — Peer Validation Logic
+ * =============================================================================
+ */
+
 import { prisma } from '../../shared/db/prisma';
 import {
   AppError,
@@ -8,22 +14,37 @@ import {
 import * as houseService from '../house/house.service';
 import * as penaltyService from '../penalty/penalty.service';
 import { logger } from '../../shared/utils/logger';
+import { env } from '../../shared/utils/env';
+
+function computeMajority(eligibleVoters: number) {
+  return Math.floor(eligibleVoters / 2) + 1;
+}
+
+async function tallySubmissionVotes(submissionId: string) {
+  const votes = await prisma.vote.groupBy({
+    by: ['vote'],
+    where: { submissionId },
+    _count: { vote: true },
+  });
+
+  let approved = 0;
+  let rejected = 0;
+  for (const v of votes) {
+    if (v.vote === 'approve') approved = v._count.vote;
+    if (v.vote === 'reject') rejected = v._count.vote;
+  }
+  return { approved, rejected };
+}
 
 /**
- * Cast a vote on a submitted task.
- *
- * Flow:
- * 1. Fetch task and check status
- * 2. Verify house membership
- * 3. Verify user is NOT the task assignee
- * 4. Execute transaction:
- *    a. Insert vote (handling "already voted" unique constraint)
- *    b. Count approvals and rejections
- *    c. Calculate majority threshold
- *    d. If threshold met, finalize task and optionally assign penalty
+ * Cast a vote on the current submission round of a submitted task.
  */
-export async function castVote(userId: string, taskId: string, voteType: 'approve' | 'reject') {
-  // 1. Fetch Task
+export async function castVote(
+  userId: string,
+  taskId: string,
+  voteType: 'approve' | 'reject',
+  reason?: string,
+) {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
@@ -33,176 +54,253 @@ export async function castVote(userId: string, taskId: string, voteType: 'approv
       status: true,
       rewardPoints: true,
       penaltyFine: true,
+      currentSubmissionId: true,
+      resubmissionCount: true,
+      currentSubmission: { select: { id: true, attemptNumber: true } },
     },
   });
 
-  if (!task) {
-    throw NotFoundError('Task');
-  }
-
+  if (!task) throw NotFoundError('Task');
   if (task.status !== 'submitted') {
     throw new AppError(
       `Cannot vote on task in state '${task.status}'. Task must be 'submitted'.`,
       400,
     );
   }
+  if (!task.currentSubmissionId || !task.currentSubmission) {
+    throw new AppError('Task has no active submission to vote on', 400);
+  }
 
-  // 2. Verify House Membership
   await houseService.verifyMembership(task.houseId, userId);
 
-  // 3. User cannot vote on their own task
   if (task.assignedTo === userId) {
     throw ForbiddenError('You cannot vote on your own task');
   }
 
-  // 4. Execute Transaction
+  if (voteType === 'reject' && reason !== undefined && reason.length > 500) {
+    throw new AppError('Reject reason must be at most 500 characters', 400);
+  }
+
+  const submissionId = task.currentSubmissionId;
+  const attemptNumber = task.currentSubmission.attemptNumber;
+
   const result = await prisma.$transaction(
     async (tx: Parameters<typeof penaltyService.applyPenalty>[0]) => {
-      // 0. Lock the task row to prevent concurrent voting write-skew (Lost Wake-up)
       await tx.$executeRaw`SELECT id FROM tasks WHERE id = ${taskId}::uuid FOR UPDATE`;
 
-      // a. Insert Vote (Unique constraints prevent double voting: @@unique([taskId, userId]))
       try {
         await tx.vote.create({
           data: {
             taskId,
+            submissionId,
             userId,
             vote: voteType,
+            reason: voteType === 'reject' ? reason ?? null : null,
           },
         });
       } catch (error: unknown) {
-        // Prisma error code for unique constraint violation
         if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
-          throw ConflictError('You have already voted on this task');
+          throw ConflictError('You have already voted on this submission round');
         }
         throw error;
       }
 
-      // b. Tally Votes
-      const votes = await tx.vote.groupBy({
-        by: ['vote'],
-        where: { taskId },
-        _count: { vote: true },
-      });
+      const { approved: approvedVotes, rejected: rejectedVotes } = await tallySubmissionVotes(
+        submissionId,
+      );
 
-      let approvedVotes = 0;
-      let rejectedVotes = 0;
-
-      for (const v of votes) {
-        if (v.vote === 'approve') approvedVotes = v._count.vote;
-        if (v.vote === 'reject') rejectedVotes = v._count.vote;
-      }
-
-      // c. Calculate majority
-      // We only care about active members excluding the assignee.
       const totalActiveMembers = await tx.houseMember.count({
         where: { houseId: task.houseId, status: 'active' },
       });
-
-      // Members eligible to vote
       const eligibleVoters = Math.max(0, totalActiveMembers - 1);
+      const majorityThreshold = computeMajority(eligibleVoters);
 
-      // Majority is strictly > 50%
-      const majorityThreshold = Math.floor(eligibleVoters / 2) + 1;
-
-      // Per-task weighting (future-proofed gamification values)
       const taskRewardPoints = task.rewardPoints;
       const taskPenaltyFine = Number(task.penaltyFine);
-
-      // ── 2-PLAYER DICTATORSHIP GUARD ──────────────────────────────────────
-      // When a house has exactly 2 active members, only 1 eligible voter
-      // exists. A single reject vote MUST NOT unilaterally fine the assignee;
-      // instead we mark the task 'disputed' to require manual resolution.
-      // An approve vote still resolves the task normally.
-      const isTwoPlayerHouse = totalActiveMembers === 2;
+      const maxAttempts = env.TASK_MAX_RESUBMISSIONS;
 
       let finalStatus = task.status;
       let actionMsg = 'Vote cast, threshold not met';
+      let votingComplete = false;
 
-      // d. Check thresholds
       if (approvedVotes >= majorityThreshold) {
         finalStatus = 'completed';
         actionMsg = 'Task approved';
+        votingComplete = true;
 
         await tx.task.updateMany({
           where: { id: taskId, status: 'submitted' },
-          data: { status: 'completed' },
+          data: { status: 'completed', currentSubmissionId: null },
         });
-
-        // reward_points are stored on the task for future gamification reads;
-        // no write needed here — the field is already set at task creation.
-        void taskRewardPoints;
       } else if (rejectedVotes >= majorityThreshold) {
-        if (isTwoPlayerHouse) {
-          // 2-player special case: flag as disputed, no penalty applied
+        votingComplete = true;
+        if (attemptNumber >= maxAttempts) {
+          finalStatus = 'rejected';
+          actionMsg = 'Task rejected — max resubmission attempts exhausted';
+
+          const updateResult = await tx.task.updateMany({
+            where: { id: taskId, status: 'submitted' },
+            data: { status: 'rejected', currentSubmissionId: null },
+          });
+
+          if (updateResult.count > 0) {
+            await penaltyService.applyPenalty(
+              tx,
+              task.assignedTo,
+              taskId,
+              'Task proof rejected after exhausting all resubmission attempts',
+              taskRewardPoints,
+              taskPenaltyFine,
+            );
+          }
+        } else {
           finalStatus = 'disputed';
-          actionMsg = 'Task disputed (2-player house — unilateral rejection blocked)';
+          actionMsg = 'Task disputed — assignee may resubmit with clarification';
 
           await tx.task.updateMany({
             where: { id: taskId, status: 'submitted' },
             data: { status: 'disputed' },
           });
-        } else {
+        }
+      } else if (approvedVotes + rejectedVotes === eligibleVoters) {
+        votingComplete = true;
+        if (attemptNumber >= maxAttempts) {
           finalStatus = 'rejected';
-          actionMsg = 'Task rejected by peers';
+          actionMsg = 'Task rejected (tie) — max resubmission attempts exhausted';
 
           const updateResult = await tx.task.updateMany({
             where: { id: taskId, status: 'submitted' },
-            data: { status: 'rejected' },
+            data: { status: 'rejected', currentSubmissionId: null },
           });
 
           if (updateResult.count > 0) {
-            // Apply Penalty using the exact requested transaction flow ONLY if this transaction changed the status
             await penaltyService.applyPenalty(
               tx,
               task.assignedTo,
               taskId,
-              'Task proof rejected by majority vote',
+              'Task proof rejected due to tied votes after exhausting resubmission attempts',
               taskRewardPoints,
               taskPenaltyFine,
             );
           }
-        }
-      } else if (approvedVotes + rejectedVotes === eligibleVoters) {
-        // TIE BREAKER: All eligible voters have voted, but neither reached absolute majority.
-        // This occurs in even-voter scenarios where votes split exactly 50/50.
-        // Defaulting to 'rejected' because majority consensus was mathematically not achieved.
-        finalStatus = 'rejected';
-        actionMsg = 'Task rejected by peers (Tie - Failed to reach majority consensus)';
+        } else {
+          finalStatus = 'disputed';
+          actionMsg = 'Task disputed (tie) — assignee may resubmit';
 
-        const updateResult = await tx.task.updateMany({
-          where: { id: taskId, status: 'submitted' },
-          data: { status: 'rejected' },
-        });
-
-        if (updateResult.count > 0) {
-          await penaltyService.applyPenalty(
-            tx,
-            task.assignedTo,
-            taskId,
-            'Task proof rejected due to tied votes (failed to reach majority)',
-            taskRewardPoints,
-            taskPenaltyFine,
-          );
+          await tx.task.updateMany({
+            where: { id: taskId, status: 'submitted' },
+            data: { status: 'disputed' },
+          });
         }
       }
 
       logger.info(
-        { taskId, userId, voteType, finalStatus, approvedVotes, rejectedVotes, majorityThreshold },
+        {
+          taskId,
+          submissionId,
+          attemptNumber,
+          userId,
+          voteType,
+          finalStatus,
+          approvedVotes,
+          rejectedVotes,
+          majorityThreshold,
+        },
         actionMsg,
       );
 
       return {
         taskId,
+        submissionId,
         finalStatus,
+        votingComplete,
         tallies: {
           approved: approvedVotes,
           rejected: rejectedVotes,
           required: majorityThreshold,
         },
+        eligibleVoters,
       };
     },
   );
 
   return result;
+}
+
+/**
+ * Get vote status for the current submission round.
+ */
+export async function getVoteStatus(userId: string, taskId: string) {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: {
+      id: true,
+      houseId: true,
+      assignedTo: true,
+      status: true,
+      currentSubmissionId: true,
+    },
+  });
+
+  if (!task) throw NotFoundError('Task');
+  await houseService.verifyMembership(task.houseId, userId);
+
+  const totalActiveMembers = await prisma.houseMember.count({
+    where: { houseId: task.houseId, status: 'active' },
+  });
+  const eligibleVoters = Math.max(0, totalActiveMembers - 1);
+  const majorityThreshold = computeMajority(eligibleVoters);
+
+  if (!task.currentSubmissionId) {
+    return {
+      taskId,
+      status: task.status,
+      submissionId: null,
+      tallies: { approved: 0, rejected: 0, required: majorityThreshold },
+      eligibleVoters,
+      votesCast: 0,
+      votingComplete: task.status !== 'submitted',
+      userVote: null,
+      votes: [] as Array<{
+        userId: string;
+        userName: string;
+        vote: string;
+        reason: string | null;
+        createdAt: Date;
+      }>,
+    };
+  }
+
+  const votes = await prisma.vote.findMany({
+    where: { submissionId: task.currentSubmissionId },
+    include: { user: { select: { id: true, name: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const { approved, rejected } = await tallySubmissionVotes(task.currentSubmissionId);
+  const userVoteRecord = votes.find((v) => v.userId === userId);
+
+  return {
+    taskId,
+    status: task.status,
+    submissionId: task.currentSubmissionId,
+    tallies: { approved, rejected, required: majorityThreshold },
+    eligibleVoters,
+    votesCast: votes.length,
+    votingComplete:
+      task.status !== 'submitted' ||
+      approved >= majorityThreshold ||
+      rejected >= majorityThreshold ||
+      votes.length >= eligibleVoters,
+    userVote: userVoteRecord
+      ? { vote: userVoteRecord.vote, reason: userVoteRecord.reason }
+      : null,
+    votes: votes.map((v) => ({
+      userId: v.userId,
+      userName: v.user.name,
+      vote: v.vote,
+      reason: v.reason,
+      createdAt: v.createdAt,
+    })),
+  };
 }

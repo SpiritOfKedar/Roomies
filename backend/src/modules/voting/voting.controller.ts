@@ -5,14 +5,25 @@ import type { CastVoteInput, TaskIdParams } from './voting.schema';
 
 /**
  * POST /api/tasks/:id/vote
- * Cast a vote on a submitted task. Requires house membership.
  */
 export async function castVote(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
   const { id: taskId } = req.params as unknown as TaskIdParams;
-  const { vote } = req.body as CastVoteInput;
+  const { vote, reason } = req.body as CastVoteInput;
 
-  const result = await votingService.castVote(userId, taskId, vote);
+  const result = await votingService.castVote(userId, taskId, vote, reason);
+
+  sendSuccess(res, result);
+}
+
+/**
+ * GET /api/tasks/:id/votes
+ */
+export async function getVoteStatus(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id: taskId } = req.params as unknown as TaskIdParams;
+
+  const result = await votingService.getVoteStatus(userId, taskId);
 
   sendSuccess(res, result);
 }

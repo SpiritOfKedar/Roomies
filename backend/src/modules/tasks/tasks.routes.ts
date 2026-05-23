@@ -95,3 +95,21 @@ taskRoutes.post(
   validate({ params: taskIdParamsSchema }),
   asyncHandler(tasksController.submitTask),
 );
+
+/**
+ * GET /api/tasks/:id
+ */
+taskRoutes.get(
+  '/:id',
+  validate({ params: taskIdParamsSchema }),
+  asyncHandler(tasksController.getTaskById),
+);
+
+/**
+ * GET /api/tasks/:id/history
+ */
+taskRoutes.get(
+  '/:id/history',
+  validate({ params: taskIdParamsSchema }),
+  asyncHandler(tasksController.getTaskHistory),
+);

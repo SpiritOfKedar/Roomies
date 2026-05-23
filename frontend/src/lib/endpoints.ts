@@ -1,6 +1,6 @@
 import api from './api';
 import type {
-  AuthTokens, House, PaginatedTasks, Task, VoteResult,
+  AuthTokens, House, PaginatedTasks, Task, VoteResult, TaskVoteStatus, TaskHistory,
   PaginatedExpenses, Expense, ExpenseSplit,
   LeaderboardEntry, TaskSwap, Penalty,
 } from '@/types';
@@ -46,6 +46,8 @@ export const tasksApi = {
     deadline?: string;
     assignedTo?: string;
     weight?: number;
+    isRecurring?: boolean;
+    cronSchedule?: string;
   }) =>
     api.post<{ success: boolean; data: Task }>(`/api/houses/${houseId}/tasks/assign`, body),
   submit: (_houseId: string, taskId: string, form: FormData) =>
@@ -54,10 +56,16 @@ export const tasksApi = {
       form,
       { headers: { 'Content-Type': 'multipart/form-data' } }
     ),
-  vote: (_houseId: string, taskId: string, vote: 'approve' | 'reject') =>
+  get: (taskId: string) =>
+    api.get<{ success: boolean; data: Task }>(`/api/tasks/${taskId}`),
+  getVotes: (taskId: string) =>
+    api.get<{ success: boolean; data: TaskVoteStatus }>(`/api/tasks/${taskId}/votes`),
+  getHistory: (taskId: string) =>
+    api.get<{ success: boolean; data: TaskHistory }>(`/api/tasks/${taskId}/history`),
+  vote: (_houseId: string, taskId: string, vote: 'approve' | 'reject', reason?: string) =>
     api.post<{ success: boolean; data: VoteResult }>(
       `/api/tasks/${taskId}/vote`,
-      { vote }
+      { vote, ...(reason ? { reason } : {}) }
     ),
   update: (houseId: string, taskId: string, data: Partial<Task>) =>
     api.patch<{ success: boolean; data: Task }>(`/api/houses/${houseId}/tasks/${taskId}`, data),

@@ -21,6 +21,8 @@ export const assignTaskSchema = z.object({
   rewardPoints: z.number().int().positive().optional(),
   penaltyFine: z.number().positive().optional(),
   weight: z.number().int().positive().optional(),
+  isRecurring: z.boolean().optional(),
+  cronSchedule: z.string().optional(),
 });
 
 export type AssignTaskInput = z.infer<typeof assignTaskSchema>;

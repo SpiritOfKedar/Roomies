@@ -27,9 +27,9 @@ import type {
 export async function assignTask(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
   const { id: houseId } = req.params as unknown as HouseIdParams;
-  const { title, deadline, assignedTo, weight } = req.body as AssignTaskInput;
+  const { title, deadline, assignedTo, weight, isRecurring, cronSchedule } = req.body as AssignTaskInput;
 
-  const task = await tasksService.assignNextTask(userId, houseId, title, deadline, assignedTo, weight);
+  const task = await tasksService.assignNextTask(userId, houseId, title, deadline, assignedTo, weight, isRecurring, cronSchedule);
 
   sendSuccess(res, task, 201);
 }
@@ -57,7 +57,11 @@ export async function submitTask(req: Request, res: Response): Promise<void> {
     }
   }
 
-  const task = await tasksService.submitTask(userId, taskId, imageUrl);
+  const body = req.body as Record<string, unknown>;
+  const clarification =
+    typeof body.note === 'string' ? body.note : typeof body.clarification === 'string' ? body.clarification : undefined;
+
+  const task = await tasksService.submitTask(userId, taskId, imageUrl, clarification);
 
   sendSuccess(res, task);
 }
@@ -88,4 +92,28 @@ export async function updateTask(req: Request, res: Response): Promise<void> {
   const task = await tasksService.updateTask(userId, houseId, taskId, data);
 
   sendSuccess(res, task);
+}
+
+/**
+ * GET /api/tasks/:id
+ */
+export async function getTaskById(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id: taskId } = req.params as unknown as TaskIdParams;
+
+  const task = await tasksService.getTaskById(userId, taskId);
+
+  sendSuccess(res, task);
+}
+
+/**
+ * GET /api/tasks/:id/history
+ */
+export async function getTaskHistory(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id: taskId } = req.params as unknown as TaskIdParams;
+
+  const history = await tasksService.getTaskHistory(userId, taskId);
+
+  sendSuccess(res, history);
 }

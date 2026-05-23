@@ -9,12 +9,14 @@ export const votingRoutes = Router();
 
 votingRoutes.use(requireAuth);
 
-/**
- * POST /api/tasks/:id/vote
- * Cast an approve/reject vote on a task proof.
- */
 votingRoutes.post(
   '/:id/vote',
   validate({ params: taskIdParamsSchema, body: castVoteSchema }),
   asyncHandler(votingController.castVote),
+);
+
+votingRoutes.get(
+  '/:id/votes',
+  validate({ params: taskIdParamsSchema }),
+  asyncHandler(votingController.getVoteStatus),
 );

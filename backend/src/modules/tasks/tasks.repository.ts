@@ -111,6 +111,8 @@ export async function createTaskInTx(
     deadline: Date;
     rewardPoints?: number;
     penaltyFine?: number;
+    isRecurring?: boolean;
+    cronSchedule?: string;
   },
 ) {
   return tx.task.create({
@@ -122,6 +124,8 @@ export async function createTaskInTx(
       deadline: data.deadline,
       ...(data.rewardPoints !== undefined && { rewardPoints: data.rewardPoints }),
       ...(data.penaltyFine !== undefined && { penaltyFine: data.penaltyFine }),
+      ...(data.isRecurring !== undefined && { isRecurring: data.isRecurring }),
+      ...(data.cronSchedule !== undefined && { cronSchedule: data.cronSchedule }),
     },
     select: {
       id: true,
@@ -182,11 +186,26 @@ export async function findTaskById(taskId: string) {
       deadline: true,
       createdAt: true,
       imageUrl: true,
+      rewardPoints: true,
+      penaltyFine: true,
+      isRecurring: true,
+      cronSchedule: true,
+      resubmissionCount: true,
+      currentSubmissionId: true,
       assignee: {
         select: {
           id: true,
           name: true,
           email: true,
+        },
+      },
+      currentSubmission: {
+        select: {
+          id: true,
+          attemptNumber: true,
+          imageUrl: true,
+          clarification: true,
+          createdAt: true,
         },
       },
     },
@@ -206,11 +225,15 @@ export async function findTaskById(taskId: string) {
 export async function updateTaskStatusAtomic(
   taskId: string,
   newStatus: string,
-  expectedStatus: string,
+  expectedStatus: string | string[],
   imageUrl?: string,
 ) {
+  const statusCondition = Array.isArray(expectedStatus)
+    ? { in: expectedStatus }
+    : expectedStatus;
+
   const result = await prisma.task.updateMany({
-    where: { id: taskId, status: expectedStatus },
+    where: { id: taskId, status: statusCondition },
     data: {
       status: newStatus,
       ...(imageUrl && { imageUrl }),
@@ -220,6 +243,58 @@ export async function updateTaskStatusAtomic(
   if (result.count === 0) return null;
 
   return findTaskById(taskId);
+}
+
+export interface MemberWorkloadStat {
+  userId: string;
+  name: string;
+  joinedAt: Date;
+  openTasks: number;
+  daysSinceLastAssignment: number;
+}
+
+/**
+ * Workload stats per active member for fair rotation scoring.
+ */
+export async function getMemberWorkloadStats(
+  tx: TxClient,
+  houseId: string,
+): Promise<MemberWorkloadStat[]> {
+  const members = await getActiveMembersInTx(tx, houseId);
+  const openStatuses = ['pending', 'submitted', 'disputed'] as const;
+
+  const stats: MemberWorkloadStat[] = [];
+  const now = Date.now();
+
+  for (const member of members) {
+    const openTasks = await tx.task.count({
+      where: {
+        houseId,
+        assignedTo: member.userId,
+        status: { in: [...openStatuses] },
+      },
+    });
+
+    const lastAssigned = await tx.task.findFirst({
+      where: { houseId, assignedTo: member.userId },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+
+    const daysSinceLastAssignment = lastAssigned
+      ? (now - lastAssigned.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+      : 999;
+
+    stats.push({
+      userId: member.userId,
+      name: member.user.name,
+      joinedAt: member.joinedAt,
+      openTasks,
+      daysSinceLastAssignment,
+    });
+  }
+
+  return stats;
 }
 
 /**
@@ -253,11 +328,26 @@ export async function getTasksByHouse(
         deadline: true,
         createdAt: true,
         imageUrl: true,
+        rewardPoints: true,
+        penaltyFine: true,
+        isRecurring: true,
+        cronSchedule: true,
+        resubmissionCount: true,
+        currentSubmissionId: true,
         assignee: {
           select: {
             id: true,
             name: true,
             email: true,
+          },
+        },
+        currentSubmission: {
+          select: {
+            id: true,
+            attemptNumber: true,
+            imageUrl: true,
+            clarification: true,
+            createdAt: true,
           },
         },
       },

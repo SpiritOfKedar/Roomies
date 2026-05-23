@@ -182,7 +182,7 @@ export default function HousePage() {
 
             {/* Tab content */}
             <div className="bg-white rounded-xl border border-[#E5E5E5] p-6 shadow-sm">
-              {tab === 'tasks' && <TasksTab houseId={id as string} members={members} isAdmin={isAdmin} />}
+              {tab === 'tasks' && <TasksTab house={house} members={members} isAdmin={isAdmin} />}
               {tab === 'expenses' && <ExpensesTab houseId={id as string} members={members} />}
               {tab === 'leaderboard' && <LeaderboardTab houseId={id as string} />}
               {tab === 'swaps' && <SwapsTab houseId={id as string} members={members} />}

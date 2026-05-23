@@ -60,6 +60,19 @@ export interface Task {
   assignee?: { id: string; name: string; email: string };
   /** Alias populated by some API responses */
   weight?: number;
+  resubmissionCount?: number;
+  currentSubmissionId?: string | null;
+  currentSubmission?: TaskSubmission | null;
+  maxResubmissions?: number;
+  attemptsRemaining?: number;
+}
+
+export interface TaskSubmission {
+  id: string;
+  attemptNumber: number;
+  imageUrl?: string | null;
+  clarification?: string | null;
+  createdAt: string;
 }
 
 export interface PaginatedTasks {
@@ -73,10 +86,52 @@ export interface PaginatedTasks {
 // ── Votes ─────────────────────────────────────────────────────────────────────
 export interface VoteResult {
   taskId: string;
+  submissionId?: string;
   finalStatus: string;
-  tallies: { approved: number; rejected: number };
-  majorityThreshold: number;
+  votingComplete?: boolean;
+  tallies: { approved: number; rejected: number; required: number };
   eligibleVoters: number;
+}
+
+export interface VoteRecord {
+  userId: string;
+  userName: string;
+  vote: 'approve' | 'reject';
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface TaskVoteStatus {
+  taskId: string;
+  status: string;
+  submissionId: string | null;
+  tallies: { approved: number; rejected: number; required: number };
+  eligibleVoters: number;
+  votesCast: number;
+  votingComplete: boolean;
+  userVote: { vote: string; reason: string | null } | null;
+  votes: VoteRecord[];
+}
+
+export interface TaskHistoryRound {
+  submissionId: string;
+  attemptNumber: number;
+  imageUrl?: string | null;
+  clarification?: string | null;
+  submittedAt: string;
+  isCurrent: boolean;
+  outcome: string | null;
+  votes: VoteRecord[];
+  tallies: { approved: number; rejected: number };
+}
+
+export interface TaskHistory {
+  taskId: string;
+  title: string;
+  status: string;
+  resubmissionCount: number;
+  maxResubmissions: number;
+  rounds: TaskHistoryRound[];
 }
 
 // ── Expenses ──────────────────────────────────────────────────────────────────

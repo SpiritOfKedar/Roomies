@@ -16,8 +16,10 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import path from 'path';
 import { env } from './shared/utils/env';
 import { logger } from './shared/utils/logger';
+import { initStorage } from './shared/utils/storage';
 import { globalErrorHandler } from './shared/middleware/error-handler';
 import { apiLimiter } from './shared/middleware/rate-limiter';
 import { disconnectPrisma } from './shared/db/prisma';
@@ -52,6 +54,9 @@ app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// ---- Static uploads ----
+app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR)));
 
 // ---- Health Check ----
 app.get('/health', (_req, res) => {
@@ -88,6 +93,7 @@ export default app;
 // ---- Start Server (skipped in test mode so Supertest manages its own port) ----
 if (env.NODE_ENV !== 'test') {
   const server = app.listen(env.PORT, () => {
+    initStorage().catch((err) => logger.error({ err }, 'Failed to init upload storage'));
     logger.info(`🚀 Roomies backend running on port ${env.PORT} [${env.NODE_ENV}]`);
     scheduleTaskSweeperJob().catch((err) =>
       logger.error({ err }, 'Failed to schedule task sweeper'),

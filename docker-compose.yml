@@ -65,6 +65,7 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
+      - ./backend/uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy

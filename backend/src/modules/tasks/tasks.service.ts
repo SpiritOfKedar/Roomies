@@ -34,8 +34,10 @@ import { prisma } from '../../shared/db/prisma';
 
 import { AppError, NotFoundError, ForbiddenError } from '../../shared/utils/app-error';
 import * as tasksRepo from './tasks.repository';
+import * as submissionsRepo from './task-submissions.repository';
 import * as houseService from '../house/house.service';
 import { logger } from '../../shared/utils/logger';
+import { env } from '../../shared/utils/env';
 import type { UpdateTaskInput } from './tasks.schema';
 
 // ---- Service Functions ----
@@ -65,6 +67,8 @@ export async function assignNextTask(
   deadlineStr: string,
   explicitAssignedTo?: string,
   explicitWeight?: number,
+  isRecurring?: boolean,
+  cronSchedule?: string,
 ) {
   // Pre-check: Verify the requesting user is an active member
   await houseService.verifyMembership(houseId, requestingUserId);
@@ -112,34 +116,84 @@ export async function assignNextTask(
     let nextIndex = currentIndex; // default to no increment
 
     if (explicitAssignedTo) {
-      // Validate the specific member
-      const member = activeMembers.find(m => m.userId === explicitAssignedTo);
+      const member = activeMembers.find((m) => m.userId === explicitAssignedTo);
       if (!member) {
         throw new AppError('Cannot assign task: designated user is not an active member', 400);
       }
       assignedMemberId = member.userId;
       assignedMemberName = member.user.name;
     } else {
-      // The modulo handles wrap-around when members leave/join
-      const effectiveIndex = currentIndex % activeMembers.length;
-      const assignedMember = activeMembers[effectiveIndex];
-      assignedMemberId = assignedMember.userId;
-      assignedMemberName = assignedMember.user.name;
-      // Step 5: Advance the rotation index ONLY for auto-assigned tasks
-      nextIndex = (currentIndex + 1) % activeMembers.length;
+      const workloadStats = await tasksRepo.getMemberWorkloadStats(tx, houseId);
+      const maxOpen = env.TASK_MAX_OPEN_PER_USER;
+
+      const candidates = workloadStats.map((stat, index) => {
+        const excluded = stat.openTasks >= maxOpen;
+        const score = stat.openTasks * 10 - stat.daysSinceLastAssignment;
+        return {
+          userId: stat.userId,
+          name: stat.name,
+          index,
+          openTasks: stat.openTasks,
+          daysSinceLastAssignment: Math.round(stat.daysSinceLastAssignment * 10) / 10,
+          score: Math.round(score * 100) / 100,
+          excluded,
+          exclusionReason:
+            excluded ? `openTasks (${stat.openTasks}) >= max (${maxOpen})` : null,
+        };
+      });
+
+      const eligible = candidates.filter((c) => !c.excluded);
+      if (eligible.length === 0) {
+        throw new AppError(
+          'Cannot assign task: all active members are at their open-task limit',
+          400,
+        );
+      }
+
+      eligible.sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score;
+        const rotationOrderA =
+          (a.index - (currentIndex % activeMembers.length) + activeMembers.length) %
+          activeMembers.length;
+        const rotationOrderB =
+          (b.index - (currentIndex % activeMembers.length) + activeMembers.length) %
+          activeMembers.length;
+        return rotationOrderA - rotationOrderB;
+      });
+
+      const selected = eligible[0];
+      assignedMemberId = selected.userId;
+      assignedMemberName = selected.name;
+      nextIndex = (selected.index + 1) % activeMembers.length;
+
+      logger.info(
+        {
+          event: 'rotation_decision',
+          houseId,
+          currentIndex,
+          maxOpenPerUser: maxOpen,
+          candidates,
+          selected: {
+            userId: selected.userId,
+            name: selected.name,
+            reason: `lowest score (${selected.score}) with ${selected.openTasks} open task(s), ${selected.daysSinceLastAssignment} days since last assignment`,
+          },
+        },
+        'Rotation engine: fair assignment decision',
+      );
     }
 
-    logger.info(
-      {
-        houseId,
-        currentIndex,
-        effectiveIndex: explicitAssignedTo ? 'explicit' : currentIndex % activeMembers.length,
-        totalActive: activeMembers.length,
-        assignedTo: assignedMemberId,
-        assignedName: assignedMemberName,
-      },
-      'Rotation engine: assigning task',
-    );
+    if (explicitAssignedTo) {
+      logger.info(
+        {
+          houseId,
+          assignedTo: assignedMemberId,
+          assignedName: assignedMemberName,
+          mode: 'explicit',
+        },
+        'Rotation engine: explicit assignment (index not advanced)',
+      );
+    }
 
     // Step 4: Create the task
     const createdTask = await tasksRepo.createTaskInTx(tx, {
@@ -149,6 +203,8 @@ export async function assignNextTask(
       deadline,
       rewardPoints,
       penaltyFine,
+      isRecurring,
+      cronSchedule,
     });
 
     if (nextIndex !== currentIndex) {
@@ -181,51 +237,107 @@ export async function assignNextTask(
  * @param imageUrl - Optional proof image URL
  * @returns The updated task
  */
-export async function submitTask(userId: string, taskId: string, imageUrl?: string) {
-  // 1. Fetch task
+export async function submitTask(
+  userId: string,
+  taskId: string,
+  imageUrl?: string,
+  clarification?: string,
+) {
   const task = await tasksRepo.findTaskById(taskId);
   if (!task) {
     throw NotFoundError('Task');
   }
 
-  // 2. Verify the submitting user is the assigned user
   if (task.assignedTo !== userId) {
     throw ForbiddenError('Only the assigned user can submit this task');
   }
 
-  // 3. Verify task is in 'pending' status
-  if (task.status !== 'pending') {
+  const isResubmit = task.status === 'disputed';
+  const allowedStatuses = ['pending', 'disputed'];
+
+  if (!allowedStatuses.includes(task.status)) {
     throw new AppError(
-      `Cannot submit task: current status is '${task.status}' (must be 'pending')`,
+      `Cannot submit task: current status is '${task.status}' (must be pending or disputed)`,
       400,
     );
   }
 
-  // 4. Check deadline hasn't passed
   if (new Date(task.deadline) < new Date()) {
     throw new AppError('Cannot submit task: deadline has passed', 400);
   }
 
-  // 5. Check if solo house (1 active member)
   const activeMembersCount = await prisma.houseMember.count({
     where: { houseId: task.houseId, status: 'active' },
   });
 
   const isSoloHouse = activeMembersCount <= 1;
+  const maxAttempts = env.TASK_MAX_RESUBMISSIONS;
+
+  const latestSubmission = await submissionsRepo.getLatestSubmission(taskId);
+  const nextAttemptNumber = (latestSubmission?.attemptNumber ?? 0) + 1;
+
+  if (nextAttemptNumber > maxAttempts) {
+    throw new AppError(
+      `Maximum resubmission attempts (${maxAttempts}) reached for this task`,
+      400,
+    );
+  }
+
+  if (isResubmit && !clarification?.trim()) {
+    throw new AppError('Clarification is required when resubmitting after a dispute', 400);
+  }
+
   const newStatus = isSoloHouse ? 'completed' : 'submitted';
 
-  // 6. Update status atomically
-  const updatedTask = await tasksRepo.updateTaskStatusAtomic(
-    taskId,
-    newStatus,
-    'pending',
-    imageUrl,
-  );
+  const updatedTask = await prisma.$transaction(async (tx) => {
+    const statusCondition = isResubmit ? ['disputed'] : ['pending'];
+
+    const updateResult = await tx.task.updateMany({
+      where: { id: taskId, status: { in: statusCondition } },
+      data: {
+        status: newStatus,
+        imageUrl: imageUrl ?? task.imageUrl,
+        ...(isResubmit && { resubmissionCount: { increment: 1 } }),
+      },
+    });
+
+    if (updateResult.count === 0) {
+      return null;
+    }
+
+    const submission = await tx.taskSubmission.create({
+      data: {
+        taskId,
+        attemptNumber: nextAttemptNumber,
+        imageUrl,
+        clarification: clarification?.trim() || null,
+      },
+    });
+
+    await tx.task.update({
+      where: { id: taskId },
+      data: {
+        currentSubmissionId: isSoloHouse ? null : submission.id,
+      },
+    });
+
+    return tasksRepo.findTaskById(taskId);
+  });
+
   if (!updatedTask) {
     throw new AppError('Task state was modified concurrently. Please try again.', 409);
   }
 
-  logger.info({ taskId, userId, newStatus }, `Task submitted (Solo House: ${isSoloHouse})`);
+  logger.info(
+    {
+      taskId,
+      userId,
+      attemptNumber: nextAttemptNumber,
+      isResubmit,
+      newStatus,
+    },
+    `Task submitted (Solo House: ${isSoloHouse})`,
+  );
 
   return updatedTask;
 }
@@ -252,6 +364,85 @@ export async function getTasksByHouse(
   const { tasks, total } = await tasksRepo.getTasksByHouse(houseId, limit, offset);
 
   return { tasks, total, limit, offset };
+}
+
+/**
+ * Get a single task with submission and vote context.
+ */
+export async function getTaskById(userId: string, taskId: string) {
+  const task = await tasksRepo.findTaskById(taskId);
+  if (!task) throw NotFoundError('Task');
+
+  await houseService.verifyMembership(task.houseId, userId);
+
+  return {
+    ...task,
+    maxResubmissions: env.TASK_MAX_RESUBMISSIONS,
+    attemptsRemaining: Math.max(
+      0,
+      env.TASK_MAX_RESUBMISSIONS - (task.currentSubmission?.attemptNumber ?? 0),
+    ),
+  };
+}
+
+/**
+ * Get submission and voting history for a task.
+ */
+export async function getTaskHistory(userId: string, taskId: string) {
+  const task = await tasksRepo.findTaskById(taskId);
+  if (!task) throw NotFoundError('Task');
+
+  await houseService.verifyMembership(task.houseId, userId);
+
+  const submissions = await submissionsRepo.getSubmissionsWithVotes(taskId);
+
+  const rounds = submissions.map((sub) => {
+    const approved = sub.votes.filter((v) => v.vote === 'approve').length;
+    const rejected = sub.votes.filter((v) => v.vote === 'reject').length;
+    const isCurrent = sub.id === task.currentSubmissionId;
+
+    let outcome: string | null = null;
+    if (!isCurrent) {
+      if (approved > rejected) outcome = 'approved';
+      else if (rejected > approved) outcome = 'disputed';
+      else if (sub.votes.length > 0) outcome = 'tie';
+    } else if (task.status === 'completed') {
+      outcome = 'approved';
+    } else if (task.status === 'disputed') {
+      outcome = 'disputed';
+    } else if (task.status === 'rejected') {
+      outcome = 'rejected';
+    } else if (task.status === 'submitted') {
+      outcome = 'voting';
+    }
+
+    return {
+      submissionId: sub.id,
+      attemptNumber: sub.attemptNumber,
+      imageUrl: sub.imageUrl,
+      clarification: sub.clarification,
+      submittedAt: sub.createdAt,
+      isCurrent,
+      outcome,
+      votes: sub.votes.map((v) => ({
+        userId: v.userId,
+        userName: v.user.name,
+        vote: v.vote,
+        reason: v.reason,
+        createdAt: v.createdAt,
+      })),
+      tallies: { approved, rejected },
+    };
+  });
+
+  return {
+    taskId,
+    title: task.title,
+    status: task.status,
+    resubmissionCount: task.resubmissionCount,
+    maxResubmissions: env.TASK_MAX_RESUBMISSIONS,
+    rounds,
+  };
 }
 
 /**
