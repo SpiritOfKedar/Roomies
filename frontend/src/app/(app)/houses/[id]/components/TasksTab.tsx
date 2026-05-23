@@ -89,17 +89,41 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
 
       const submitted = items.filter((t) => t.status === 'submitted');
       const statuses: Record<string, TaskVoteStatus> = {};
+      let needsListRefresh = false;
       await Promise.all(
         submitted.map(async (t) => {
           try {
             const vs = await tasksApi.getVotes(t.id);
             statuses[t.id] = vs.data.data;
+            if (vs.data.data.status !== t.status) {
+              needsListRefresh = true;
+            }
           } catch {
             /* ignore */
           }
         }),
       );
       setVoteStatuses(statuses);
+
+      if (needsListRefresh) {
+        const refresh = await tasksApi.list(houseId, page, limit);
+        const refreshed = refresh.data.data?.items ?? [];
+        setTasks(refreshed);
+        setTotal(refresh.data.data?.total ?? 0);
+        const stillSubmitted = refreshed.filter((t) => t.status === 'submitted');
+        const refreshedStatuses: Record<string, TaskVoteStatus> = {};
+        await Promise.all(
+          stillSubmitted.map(async (t) => {
+            try {
+              const vs = await tasksApi.getVotes(t.id);
+              refreshedStatuses[t.id] = vs.data.data;
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
+        setVoteStatuses(refreshedStatuses);
+      }
     } catch {
       toast.error('Failed to load tasks');
     } finally {

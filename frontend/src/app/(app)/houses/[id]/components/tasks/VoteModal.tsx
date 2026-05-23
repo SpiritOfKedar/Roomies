@@ -34,13 +34,17 @@ export default function VoteModal({ task, houseId, onClose, onVoted }: Props) {
     try {
       const res = await tasksApi.vote(houseId, task.id, vote, vote === 'reject' ? rejectReason || undefined : undefined);
       const result = res.data.data;
-      toast.success(
-        result.finalStatus === 'completed'
-          ? 'Task approved!'
-          : result.finalStatus === 'disputed'
-            ? 'Task disputed — assignee will be asked to resubmit'
-            : `Vote recorded`,
-      );
+      if (result.finalStatus === 'completed' && result.rotation?.assigneeName) {
+        toast.success(
+          `Task approved. ${task.title} assigned to ${result.rotation.assigneeName}.`,
+        );
+      } else if (result.finalStatus === 'completed') {
+        toast.success('Task approved!');
+      } else if (result.finalStatus === 'disputed') {
+        toast.success('Task disputed — assignee will be asked to resubmit');
+      } else {
+        toast.success('Vote recorded');
+      }
       onVoted();
       onClose();
     } catch {

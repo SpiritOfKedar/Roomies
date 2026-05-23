@@ -12,10 +12,9 @@ import {
   ConflictError,
 } from '../../shared/utils/app-error';
 import * as houseService from '../house/house.service';
-import * as penaltyService from '../penalty/penalty.service';
 import * as tasksService from '../tasks/tasks.service';
-import { logger } from '../../shared/utils/logger';
-import { env } from '../../shared/utils/env';
+import type { RotationResult } from '../tasks/tasks.service';
+import { finalizeTaskVotingIfComplete } from './voting.finalize';
 
 function computeMajority(eligibleVoters: number) {
   return Math.floor(eligibleVoters / 2) + 1;
@@ -37,6 +36,61 @@ async function tallySubmissionVotes(submissionId: string) {
   return { approved, rejected };
 }
 
+function toRotationPayload(result: RotationResult) {
+  if (!result.rotated || !result.newTaskId) return undefined;
+  return {
+    newTaskId: result.newTaskId,
+    assignedTo: result.assignedTo,
+    assigneeName: result.assigneeName,
+  };
+}
+
+async function maybeRotateAfterComplete(taskId: string): Promise<RotationResult | undefined> {
+  const rotation = await tasksService.completeAndRotateTask(taskId);
+  if (!rotation.rotated && rotation.reason && !rotation.skipped) {
+    throw new AppError(`Chore rotation failed: ${rotation.reason}`, 500);
+  }
+  return rotation;
+}
+
+/**
+ * Self-heal tasks stuck in submitted when vote tallies already meet majority.
+ */
+async function selfHealStuckSubmission(taskId: string): Promise<{
+  healed: boolean;
+  newStatus: string;
+  rotation?: RotationResult;
+}> {
+  const healResult = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT id FROM tasks WHERE id = ${taskId}::uuid FOR UPDATE`;
+    return finalizeTaskVotingIfComplete(tx, taskId);
+  });
+
+  if (!healResult.finalized) {
+    return { healed: false, newStatus: healResult.newStatus };
+  }
+
+  let rotation: RotationResult | undefined;
+  if (healResult.shouldRotate && healResult.newStatus === 'completed') {
+    rotation = await maybeRotateAfterComplete(taskId);
+  }
+
+  return { healed: true, newStatus: healResult.newStatus, rotation };
+}
+
+function majorityMet(
+  approved: number,
+  rejected: number,
+  majorityThreshold: number,
+  eligibleVoters: number,
+) {
+  return (
+    approved >= majorityThreshold ||
+    rejected >= majorityThreshold ||
+    (eligibleVoters > 0 && approved + rejected >= eligibleVoters)
+  );
+}
+
 /**
  * Cast a vote on the current submission round of a submitted task.
  */
@@ -53,10 +107,7 @@ export async function castVote(
       houseId: true,
       assignedTo: true,
       status: true,
-      rewardPoints: true,
-      penaltyFine: true,
       currentSubmissionId: true,
-      resubmissionCount: true,
       currentSubmission: { select: { id: true, attemptNumber: true } },
     },
   });
@@ -83,160 +134,75 @@ export async function castVote(
   }
 
   const submissionId = task.currentSubmissionId;
-  const attemptNumber = task.currentSubmission.attemptNumber;
 
-  const result = await prisma.$transaction(
-    async (tx: Parameters<typeof penaltyService.applyPenalty>[0]) => {
-      await tx.$executeRaw`SELECT id FROM tasks WHERE id = ${taskId}::uuid FOR UPDATE`;
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT id FROM tasks WHERE id = ${taskId}::uuid FOR UPDATE`;
 
-      try {
-        await tx.vote.create({
-          data: {
-            taskId,
-            submissionId,
-            userId,
-            vote: voteType,
-            reason: voteType === 'reject' ? reason ?? null : null,
-          },
-        });
-      } catch (error: unknown) {
-        if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
-          throw ConflictError('You have already voted on this submission round');
-        }
-        throw error;
-      }
-
-      const { approved: approvedVotes, rejected: rejectedVotes } = await tallySubmissionVotes(
-        submissionId,
-      );
-
-      const totalActiveMembers = await tx.houseMember.count({
-        where: { houseId: task.houseId, status: 'active' },
-      });
-      const eligibleVoters = Math.max(0, totalActiveMembers - 1);
-      const majorityThreshold = computeMajority(eligibleVoters);
-
-      const taskRewardPoints = task.rewardPoints;
-      const taskPenaltyFine = Number(task.penaltyFine);
-      const maxAttempts = env.TASK_MAX_RESUBMISSIONS;
-
-      let finalStatus = task.status;
-      let actionMsg = 'Vote cast, threshold not met';
-      let votingComplete = false;
-
-      if (approvedVotes >= majorityThreshold) {
-        finalStatus = 'completed';
-        actionMsg = 'Task approved';
-        votingComplete = true;
-
-        await tx.task.updateMany({
-          where: { id: taskId, status: 'submitted' },
-          data: { status: 'completed', currentSubmissionId: null },
-        });
-      } else if (rejectedVotes >= majorityThreshold) {
-        votingComplete = true;
-        if (attemptNumber >= maxAttempts) {
-          finalStatus = 'rejected';
-          actionMsg = 'Task rejected — max resubmission attempts exhausted';
-
-          const updateResult = await tx.task.updateMany({
-            where: { id: taskId, status: 'submitted' },
-            data: { status: 'rejected', currentSubmissionId: null },
-          });
-
-          if (updateResult.count > 0) {
-            await penaltyService.applyPenalty(
-              tx,
-              task.assignedTo,
-              taskId,
-              'Task proof rejected after exhausting all resubmission attempts',
-              taskRewardPoints,
-              taskPenaltyFine,
-            );
-          }
-        } else {
-          finalStatus = 'disputed';
-          actionMsg = 'Task disputed — assignee may resubmit with clarification';
-
-          await tx.task.updateMany({
-            where: { id: taskId, status: 'submitted' },
-            data: { status: 'disputed' },
-          });
-        }
-      } else if (approvedVotes + rejectedVotes === eligibleVoters) {
-        votingComplete = true;
-        if (attemptNumber >= maxAttempts) {
-          finalStatus = 'rejected';
-          actionMsg = 'Task rejected (tie) — max resubmission attempts exhausted';
-
-          const updateResult = await tx.task.updateMany({
-            where: { id: taskId, status: 'submitted' },
-            data: { status: 'rejected', currentSubmissionId: null },
-          });
-
-          if (updateResult.count > 0) {
-            await penaltyService.applyPenalty(
-              tx,
-              task.assignedTo,
-              taskId,
-              'Task proof rejected due to tied votes after exhausting resubmission attempts',
-              taskRewardPoints,
-              taskPenaltyFine,
-            );
-          }
-        } else {
-          finalStatus = 'disputed';
-          actionMsg = 'Task disputed (tie) — assignee may resubmit';
-
-          await tx.task.updateMany({
-            where: { id: taskId, status: 'submitted' },
-            data: { status: 'disputed' },
-          });
-        }
-      }
-
-      logger.info(
-        {
+    try {
+      await tx.vote.create({
+        data: {
           taskId,
           submissionId,
-          attemptNumber,
           userId,
-          voteType,
-          finalStatus,
-          approvedVotes,
-          rejectedVotes,
-          majorityThreshold,
+          vote: voteType,
+          reason: voteType === 'reject' ? reason ?? null : null,
         },
-        actionMsg,
-      );
+      });
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+        throw ConflictError('You have already voted on this submission round');
+      }
+      throw error;
+    }
 
-      return {
-        taskId,
-        submissionId,
-        finalStatus,
-        votingComplete,
-        tallies: {
-          approved: approvedVotes,
-          rejected: rejectedVotes,
-          required: majorityThreshold,
-        },
-        eligibleVoters,
-      };
-    },
-  );
+    const { approved: approvedVotes, rejected: rejectedVotes } = await tallySubmissionVotes(
+      submissionId,
+    );
 
-  if (result.finalStatus === 'completed') {
-    await tasksService.spawnNextChoreInstance(taskId);
+    const totalActiveMembers = await tx.houseMember.count({
+      where: { houseId: task.houseId, status: 'active' },
+    });
+    const eligibleVoters = Math.max(0, totalActiveMembers - 1);
+    const majorityThreshold = computeMajority(eligibleVoters);
+
+    const finalize = await finalizeTaskVotingIfComplete(tx, taskId);
+
+    return {
+      taskId,
+      submissionId,
+      finalStatus: finalize.newStatus,
+      votingComplete: finalize.finalized || finalize.newStatus !== 'submitted',
+      shouldRotate: finalize.shouldRotate,
+      tallies: {
+        approved: approvedVotes,
+        rejected: rejectedVotes,
+        required: majorityThreshold,
+      },
+      eligibleVoters,
+    };
+  });
+
+  let rotation: RotationResult | undefined;
+  if (result.shouldRotate && result.finalStatus === 'completed') {
+    rotation = await maybeRotateAfterComplete(taskId);
   }
 
-  return result;
+  return {
+    taskId: result.taskId,
+    submissionId: result.submissionId,
+    finalStatus: result.finalStatus,
+    votingComplete: result.votingComplete,
+    tallies: result.tallies,
+    eligibleVoters: result.eligibleVoters,
+    rotation: rotation ? toRotationPayload(rotation) : undefined,
+  };
 }
 
 /**
  * Get vote status for the current submission round.
  */
 export async function getVoteStatus(userId: string, taskId: string) {
-  const task = await prisma.task.findUnique({
+  let task = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
       id: true,
@@ -285,18 +251,37 @@ export async function getVoteStatus(userId: string, taskId: string) {
   const { approved, rejected } = await tallySubmissionVotes(task.currentSubmissionId);
   const userVoteRecord = votes.find((v) => v.userId === userId);
 
+  if (
+    task.status === 'submitted' &&
+    majorityMet(approved, rejected, majorityThreshold, eligibleVoters)
+  ) {
+    const heal = await selfHealStuckSubmission(taskId);
+    if (heal.healed) {
+      task = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: {
+          id: true,
+          houseId: true,
+          assignedTo: true,
+          status: true,
+          currentSubmissionId: true,
+        },
+      });
+      if (!task) throw NotFoundError('Task');
+    }
+  }
+
+  const currentStatus = task.status;
+  const votingComplete = currentStatus !== 'submitted';
+
   return {
     taskId,
-    status: task.status,
+    status: currentStatus,
     submissionId: task.currentSubmissionId,
     tallies: { approved, rejected, required: majorityThreshold },
     eligibleVoters,
     votesCast: votes.length,
-    votingComplete:
-      task.status !== 'submitted' ||
-      approved >= majorityThreshold ||
-      rejected >= majorityThreshold ||
-      votes.length >= eligibleVoters,
+    votingComplete,
     userVote: userVoteRecord
       ? { vote: userVoteRecord.vote, reason: userVoteRecord.reason }
       : null,

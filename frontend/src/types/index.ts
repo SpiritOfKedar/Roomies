@@ -91,6 +91,11 @@ export interface VoteResult {
   votingComplete?: boolean;
   tallies: { approved: number; rejected: number; required: number };
   eligibleVoters: number;
+  rotation?: {
+    newTaskId: string;
+    assignedTo?: string;
+    assigneeName?: string;
+  };
 }
 
 export interface VoteRecord {

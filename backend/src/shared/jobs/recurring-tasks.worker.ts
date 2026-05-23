@@ -72,10 +72,32 @@ export function startRecurringTasksWorker(): void {
 
       for (const task of missedRotations) {
         try {
-          const result = await tasksService.spawnNextChoreInstance(task.id);
-          if (result) spawned++;
+          const result = await tasksService.completeAndRotateTask(task.id);
+          if (result.rotated) {
+            spawned++;
+            logger.info(
+              {
+                completedTaskId: task.id,
+                newTaskId: result.newTaskId,
+                assignedTo: result.assignedTo,
+                assigneeName: result.assigneeName,
+                title: task.title,
+              },
+              'Recurring worker: rotated chore to next assignee',
+            );
+          } else if (result.skipped) {
+            logger.debug(
+              { taskId: task.id, reason: result.reason },
+              'Recurring worker: rotation skipped',
+            );
+          } else {
+            logger.warn(
+              { taskId: task.id, reason: result.reason },
+              'Recurring worker: rotation did not spawn a new task',
+            );
+          }
         } catch (err) {
-          logger.error({ err, taskId: task.id }, 'Failed to process missed rotation');
+          logger.error({ err, taskId: task.id }, 'Recurring worker: failed to rotate chore');
         }
       }
 

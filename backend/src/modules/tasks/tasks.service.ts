@@ -168,9 +168,33 @@ async function executeAssignmentInTx(
     assignedMemberName = member.user.name;
   } else {
     const choreTitle = rotationOptions?.choreTitle ?? title;
+    const excludeUserId = rotationOptions?.excludeUserId;
+
+    // 2-member house: always assign to the non-completer
+    if (activeMembers.length === 2 && excludeUserId) {
+      const other = activeMembers.find((m) => m.userId !== excludeUserId);
+      if (!other) {
+        throw new AppError('Cannot assign task: no other active member for rotation', 400);
+      }
+      assignedMemberId = other.userId;
+      assignedMemberName = other.user.name;
+      const otherIndex = activeMembers.findIndex((m) => m.userId === other.userId);
+      nextIndex = (otherIndex + 1) % activeMembers.length;
+
+      logger.info(
+        {
+          event: 'rotation_decision',
+          houseId,
+          choreTitle,
+          excludeUserId,
+          mode: 'two_member_switch',
+          selected: { userId: other.userId, name: other.user.name },
+        },
+        'Rotation engine: 2-member hard switch to non-completer',
+      );
+    } else {
     const choreStats = await tasksRepo.getChoreRotationStats(tx, houseId, choreTitle);
     const maxOpen = env.TASK_MAX_OPEN_PER_USER;
-    const excludeUserId = rotationOptions?.excludeUserId;
 
     const candidates = choreStats.map((stat) => {
       const excludedByOpen = stat.openTasks >= maxOpen;
@@ -203,11 +227,8 @@ async function executeAssignmentInTx(
 
     let eligible = candidates.filter((c) => !c.excluded);
 
-    if (eligible.length === 0) {
+    if (eligible.length === 0 && excludeUserId) {
       eligible = candidates.filter((c) => c.userId !== excludeUserId);
-    }
-    if (eligible.length === 0) {
-      eligible = candidates.filter((c) => !c.excluded || c.exclusionReason?.includes('openTasks'));
     }
     if (eligible.length === 0) {
       throw new AppError(
@@ -249,6 +270,7 @@ async function executeAssignmentInTx(
       },
       'Rotation engine: per-chore fair assignment',
     );
+    }
   }
 
   if (explicitAssignedTo) {
@@ -277,11 +299,19 @@ async function executeAssignmentInTx(
   return createdTask;
 }
 
+export interface RotationResult {
+  rotated: boolean;
+  skipped?: boolean;
+  reason?: string;
+  newTaskId?: string;
+  assignedTo?: string;
+  assigneeName?: string;
+}
+
 /**
- * Spawn the next rotation instance after a task is completed.
- * Idempotent — skips if rotationSpawnedAt is already set.
+ * After a task is completed, spawn the next pending instance for the same chore.
  */
-export async function spawnNextChoreInstance(completedTaskId: string) {
+export async function completeAndRotateTask(completedTaskId: string): Promise<RotationResult> {
   const completed = await prisma.task.findUnique({
     where: { id: completedTaskId },
     select: {
@@ -300,30 +330,26 @@ export async function spawnNextChoreInstance(completedTaskId: string) {
     },
   });
 
-  if (!completed || completed.status !== 'completed') {
-    return null;
+  if (!completed) {
+    return { rotated: false, reason: 'task_not_found' };
+  }
+  if (completed.status !== 'completed') {
+    return { rotated: false, reason: 'not_completed', skipped: true };
   }
   if (completed.rotationSpawnedAt) {
-    return null;
+    return { rotated: false, reason: 'already_rotated', skipped: true };
   }
 
-  const requester =
-    (
-      await prisma.houseMember.findFirst({
-        where: { houseId: completed.houseId, role: 'admin', status: 'active' },
-        select: { userId: true },
-      })
-    )?.userId ??
-    (
-      await prisma.houseMember.findFirst({
-        where: { houseId: completed.houseId, status: 'active' },
-        select: { userId: true },
-      })
-    )?.userId;
-
-  if (!requester) {
-    logger.warn({ completedTaskId }, 'spawnNextChoreInstance: no active member to act as requester');
-    return null;
+  const activeCount = await prisma.houseMember.count({
+    where: { houseId: completed.houseId, status: 'active' },
+  });
+  if (activeCount <= 1) {
+    logger.debug({ completedTaskId }, 'completeAndRotateTask: solo house, skip rotation');
+    await prisma.task.update({
+      where: { id: completedTaskId },
+      data: { rotationSpawnedAt: new Date() },
+    });
+    return { rotated: false, reason: 'solo_house', skipped: true };
   }
 
   const newDeadline = computeNextRotationDeadline(
@@ -332,56 +358,74 @@ export async function spawnNextChoreInstance(completedTaskId: string) {
     completed.deadline,
   );
 
-  try {
-    const newTask = await prisma.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ rotation_spawned_at: Date | null }[]>`
-        SELECT rotation_spawned_at FROM tasks WHERE id = ${completedTaskId}::uuid FOR UPDATE
-      `;
-      if (locked[0]?.rotation_spawned_at) {
-        return null;
-      }
-
-      const created = await executeAssignmentInTx(tx, {
-        houseId: completed.houseId,
-        title: completed.title,
-        deadline: newDeadline,
-        rewardPoints: completed.rewardPoints,
-        penaltyFine: Number(completed.penaltyFine),
-        isRecurring: completed.isRecurring,
-        cronSchedule: completed.cronSchedule ?? undefined,
-        rotationOptions: {
-          excludeUserId: completed.assignedTo,
-          choreTitle: completed.title,
-          spawnedFromTaskId: completedTaskId,
-        },
-      });
-
-      await tx.task.update({
-        where: { id: completedTaskId },
-        data: { rotationSpawnedAt: new Date() },
-      });
-
-      return created;
-    });
-
-    if (newTask) {
-      logger.info(
-        {
-          completedTaskId,
-          newTaskId: newTask.id,
-          assignedTo: newTask.assignedTo,
-          title: completed.title,
-          newDeadline,
-        },
-        'Chore rotation: spawned next instance',
-      );
+  const newTask = await prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ rotation_spawned_at: Date | null }[]>`
+      SELECT rotation_spawned_at FROM tasks WHERE id = ${completedTaskId}::uuid FOR UPDATE
+    `;
+    if (locked[0]?.rotation_spawned_at) {
+      return null;
     }
 
-    return newTask;
-  } catch (err) {
-    logger.error({ err, completedTaskId }, 'spawnNextChoreInstance failed');
-    return null;
+    const created = await executeAssignmentInTx(tx, {
+      houseId: completed.houseId,
+      title: completed.title,
+      deadline: newDeadline,
+      rewardPoints: completed.rewardPoints,
+      penaltyFine: Number(completed.penaltyFine),
+      isRecurring: completed.isRecurring,
+      cronSchedule: completed.cronSchedule ?? undefined,
+      rotationOptions: {
+        excludeUserId: completed.assignedTo,
+        choreTitle: completed.title,
+        spawnedFromTaskId: completedTaskId,
+      },
+    });
+
+    await tx.task.update({
+      where: { id: completedTaskId },
+      data: { rotationSpawnedAt: new Date() },
+    });
+
+    return created;
+  });
+
+  if (!newTask) {
+    return { rotated: false, reason: 'already_rotated', skipped: true };
   }
+
+  const assignee = await prisma.user.findUnique({
+    where: { id: newTask.assignedTo },
+    select: { name: true },
+  });
+
+  logger.info(
+    {
+      completedTaskId,
+      newTaskId: newTask.id,
+      assignedTo: newTask.assignedTo,
+      assigneeName: assignee?.name,
+      title: completed.title,
+      newDeadline,
+    },
+    'Chore rotation: spawned next instance',
+  );
+
+  return {
+    rotated: true,
+    newTaskId: newTask.id,
+    assignedTo: newTask.assignedTo,
+    assigneeName: assignee?.name ?? undefined,
+  };
+}
+
+/** @deprecated Use completeAndRotateTask */
+export async function spawnNextChoreInstance(completedTaskId: string) {
+  const result = await completeAndRotateTask(completedTaskId);
+  if (!result.rotated || !result.newTaskId) return null;
+  return prisma.task.findUnique({
+    where: { id: result.newTaskId },
+    include: { assignee: { select: { id: true, name: true, email: true } } },
+  });
 }
 
 /**
@@ -501,7 +545,7 @@ export async function submitTask(
   );
 
   if (isSoloHouse) {
-    await spawnNextChoreInstance(taskId);
+    await completeAndRotateTask(taskId);
   }
 
   return updatedTask;
