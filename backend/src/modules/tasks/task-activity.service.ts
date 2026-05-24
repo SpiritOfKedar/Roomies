@@ -14,6 +14,7 @@ export type TaskActivityType =
   | 'rotated'
   | 'expired'
   | 'admin_edit'
+  | 'reassigned'
   | 'deleted';
 
 export async function logTaskActivity(

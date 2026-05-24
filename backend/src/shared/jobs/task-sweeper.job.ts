@@ -50,8 +50,8 @@ export function startTaskSweeper() {
             task.assignedTo,
             task.id,
             'Task deadline expired without completion',
-            10, // 10 points
-            50.0, // $50 fine
+            task.rewardPoints,
+            Number(task.penaltyFine),
           );
         }
       });

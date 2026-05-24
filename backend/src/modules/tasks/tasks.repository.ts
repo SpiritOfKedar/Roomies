@@ -396,18 +396,16 @@ export interface UpdateTaskFieldsData {
   assignedTo?: string;
   rewardPoints?: number;
   penaltyFine?: number;
+  status?: string;
+  currentSubmissionId?: string | null;
 }
 
 /**
- * Update mutable fields of a pending task.
- * Only called after the admin + 'pending' status guards pass in the service.
- *
- * @param taskId - The task UUID
- * @param data   - Partial update object (only provided fields are changed)
- * @returns The updated task record
+ * Update mutable fields of a task.
+ * Only called after admin guards pass in the service.
  */
 export async function updateTaskFields(taskId: string, data: UpdateTaskFieldsData) {
-  return prisma.task.update({
+  await prisma.task.update({
     where: { id: taskId },
     data: {
       ...(data.title !== undefined && { title: data.title }),
@@ -415,21 +413,10 @@ export async function updateTaskFields(taskId: string, data: UpdateTaskFieldsDat
       ...(data.assignedTo !== undefined && { assignedTo: data.assignedTo }),
       ...(data.rewardPoints !== undefined && { rewardPoints: data.rewardPoints }),
       ...(data.penaltyFine !== undefined && { penaltyFine: data.penaltyFine }),
-    },
-    select: {
-      id: true,
-      houseId: true,
-      assignedTo: true,
-      title: true,
-      status: true,
-      deadline: true,
-      rewardPoints: true,
-      penaltyFine: true,
-      createdAt: true,
-      imageUrl: true,
-      assignee: {
-        select: { id: true, name: true, email: true },
-      },
+      ...(data.status !== undefined && { status: data.status }),
+      ...(data.currentSubmissionId !== undefined && { currentSubmissionId: data.currentSubmissionId }),
     },
   });
+
+  return findTaskById(taskId);
 }

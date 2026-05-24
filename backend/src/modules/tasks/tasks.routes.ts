@@ -72,8 +72,8 @@ houseTaskRoutes.get(
 );
 
 /**
- * PATCH /api/houses/:id/tasks/:taskId
- * Admin-only mutation of a pending task (deadline, title, rewardPoints, penaltyFine).
+ * POST /api/houses/:id/tasks/:taskId
+ * Admin-only mutation of a pending, submitted, or disputed task.
  */
 houseTaskRoutes.patch(
   '/:taskId',

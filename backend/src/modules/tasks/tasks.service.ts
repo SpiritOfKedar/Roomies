@@ -357,6 +357,13 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
   if (completed.rotationSpawnedAt) {
     return { rotated: false, reason: 'already_rotated', skipped: true };
   }
+  if (!completed.isRecurring) {
+    await prisma.task.update({
+      where: { id: completedTaskId },
+      data: { rotationSpawnedAt: new Date() },
+    });
+    return { rotated: false, reason: 'not_recurring', skipped: true };
+  }
 
   const activeCount = await prisma.houseMember.count({
     where: { houseId: completed.houseId, status: 'active' },
@@ -514,12 +521,13 @@ export async function submitTask(
 
   const updatedTask = await prisma.$transaction(async (tx) => {
     const statusCondition = isResubmit ? ['disputed'] : ['pending'];
+    const resolvedImageUrl = imageUrl ?? task.imageUrl ?? null;
 
     const updateResult = await tx.task.updateMany({
       where: { id: taskId, status: { in: statusCondition } },
       data: {
         status: newStatus,
-        imageUrl: imageUrl ?? task.imageUrl,
+        imageUrl: resolvedImageUrl,
         ...(isResubmit && { resubmissionCount: { increment: 1 } }),
       },
     });
@@ -532,7 +540,7 @@ export async function submitTask(
       data: {
         taskId,
         attemptNumber: nextAttemptNumber,
-        imageUrl,
+        imageUrl: resolvedImageUrl,
         clarification: clarification?.trim() || null,
       },
     });
@@ -681,25 +689,24 @@ export async function getTaskHistory(userId: string, taskId: string) {
   };
 }
 
+/** Statuses admins may edit (terminal states stay immutable). */
+const ADMIN_EDITABLE_STATUSES = ['pending', 'submitted', 'disputed'] as const;
+
 /**
- * Admin mutation of a pending task.
+ * Admin mutation of an active task.
  *
  * Guards:
  *   - Requesting user must be an active house admin.
  *   - Task must exist and belong to the given house.
- *   - Task must be in 'pending' state (completed/rejected tasks are immutable).
+ *   - Task must be pending, submitted, or disputed (completed/rejected/expired are immutable).
  *   - If deadline is being updated, it must be in the future.
+ *   - Reassignment updates the existing task in place — never creates a new record.
  *
  * @param requestingUserId - The admin user's UUID
  * @param houseId          - The house UUID (ownership scope)
  * @param taskId           - The task UUID to update
  * @param data             - Partial update object
  * @returns The updated task record
- *
- * @throws ForbiddenError   if requester is not an admin
- * @throws NotFoundError    if task doesn't exist or is in a different house
- * @throws AppError(400)    if task is not in 'pending' status
- * @throws AppError(400)    if the provided deadline is in the past
  */
 export async function updateTask(
   requestingUserId: string,
@@ -707,24 +714,20 @@ export async function updateTask(
   taskId: string,
   data: UpdateTaskInput,
 ) {
-  // 1. Admin-only guard
   await houseService.verifyAdminRole(houseId, requestingUserId);
 
-  // 2. Task existence + house ownership check
   const task = await tasksRepo.findTaskById(taskId);
   if (!task || task.houseId !== houseId) {
     throw NotFoundError('Task');
   }
 
-  // 3. Immutability guard — only 'pending' tasks are mutable
-  if (task.status !== 'pending') {
+  if (!ADMIN_EDITABLE_STATUSES.includes(task.status as (typeof ADMIN_EDITABLE_STATUSES)[number])) {
     throw new AppError(
-      `Cannot modify task in state '${task.status}'. Only 'pending' tasks are mutable.`,
+      `Cannot modify task in state '${task.status}'. Only pending, submitted, or disputed tasks can be edited.`,
       400,
     );
   }
 
-  // 4. Validate assignee if changing
   if (data.assignedTo !== undefined) {
     const isMember = await houseRepo.isActiveMember(houseId, data.assignedTo);
     if (!isMember) {
@@ -732,33 +735,44 @@ export async function updateTask(
     }
   }
 
-  // 5. Deadline validation / auto-reset on reassignment
+  const isReassignment =
+    data.assignedTo !== undefined && data.assignedTo !== task.assignedTo;
+
   let deadline: Date | undefined;
   if (data.deadline) {
     deadline = new Date(data.deadline);
     if (deadline <= new Date()) {
       throw new AppError('New deadline must be in the future', 400);
     }
-  } else if (data.assignedTo !== undefined && data.assignedTo !== task.assignedTo) {
+  } else if (isReassignment) {
     deadline = computeReassignmentDeadline(task.cronSchedule, task.createdAt, task.deadline);
   }
 
-  // 6. Apply update
   const updated = await tasksRepo.updateTaskFields(taskId, {
     ...(data.title !== undefined && { title: data.title }),
     ...(deadline !== undefined && { deadline }),
     ...(data.assignedTo !== undefined && { assignedTo: data.assignedTo }),
     ...(data.rewardPoints !== undefined && { rewardPoints: data.rewardPoints }),
     ...(data.penaltyFine !== undefined && { penaltyFine: data.penaltyFine }),
+    ...(isReassignment && task.status !== 'pending'
+      ? { status: 'pending', currentSubmissionId: null }
+      : {}),
   });
 
-  await logTaskActivity(taskId, 'admin_edit', requestingUserId, {
-    changes: data,
-    newAssignedTo: data.assignedTo ?? task.assignedTo,
-    newDeadline: deadline?.toISOString() ?? task.deadline.toISOString(),
-  });
+  await logTaskActivity(
+    taskId,
+    isReassignment ? 'reassigned' : 'admin_edit',
+    requestingUserId,
+    {
+      changes: data,
+      previousAssignedTo: task.assignedTo,
+      newAssignedTo: data.assignedTo ?? task.assignedTo,
+      previousStatus: task.status,
+      newDeadline: deadline?.toISOString() ?? task.deadline.toISOString(),
+    },
+  );
 
-  logger.info({ taskId, houseId, requestingUserId, changes: data }, 'Admin mutated pending task');
+  logger.info({ taskId, houseId, requestingUserId, changes: data, isReassignment }, 'Admin updated task');
 
   return updated;
 }

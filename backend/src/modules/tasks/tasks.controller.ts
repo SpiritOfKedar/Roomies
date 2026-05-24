@@ -84,7 +84,7 @@ export async function getTasksByHouse(req: Request, res: Response): Promise<void
 
 /**
  * PATCH /api/houses/:id/tasks/:taskId
- * Admin-only mutation of a pending task's fields.
+ * Admin-only mutation of a pending, submitted, or disputed task.
  */
 export async function updateTask(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;

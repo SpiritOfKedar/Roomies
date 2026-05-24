@@ -72,12 +72,18 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
   const [resubmitTask, setResubmitTask] = useState<Task | null>(null);
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [editTask, setEditTask] = useState<Task | null>(null);
+  const [editTitle, setEditTitle] = useState('');
   const [editAssignee, setEditAssignee] = useState('');
   const [editDue, setEditDue] = useState('');
+  const [editReward, setEditReward] = useState(10);
+  const [editPenalty, setEditPenalty] = useState('50');
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const limit = 10;
+
+  const isAdminEditable = (status: string) =>
+    isAdmin && ['pending', 'submitted', 'disputed'].includes(status);
 
   const disputedForUser = useMemo(
     () => tasks.filter((t) => t.assignedTo === user?.id && t.status === 'disputed'),
@@ -179,8 +185,11 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
 
   const openEditModal = (task: Task) => {
     setEditTask(task);
+    setEditTitle(task.title);
     setEditAssignee(task.assignedTo);
     setEditDue(task.deadline ? task.deadline.slice(0, 10) : '');
+    setEditReward(task.rewardPoints ?? 10);
+    setEditPenalty(String(task.penaltyFine ?? 50));
   };
 
   const handleEditTask = async (e: React.FormEvent) => {
@@ -189,9 +198,14 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
     setEditing(true);
     try {
       await tasksApi.update(houseId, editTask.id, {
+        ...(editTitle !== editTask.title ? { title: editTitle } : {}),
         ...(editAssignee !== editTask.assignedTo ? { assignedTo: editAssignee } : {}),
         ...(editDue
           ? { deadline: new Date(editDue + 'T23:59:59.000Z').toISOString() }
+          : {}),
+        ...(editReward !== (editTask.rewardPoints ?? 10) ? { rewardPoints: editReward } : {}),
+        ...(Number(editPenalty) !== Number(editTask.penaltyFine ?? 50)
+          ? { penaltyFine: Number(editPenalty) }
           : {}),
       });
       toast.success('Task updated');
@@ -449,11 +463,11 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                             Voted
                           </span>
                         )}
-                        {isAdmin && task.status === 'pending' && (
+                        {isAdminEditable(task.status) && (
                           <button
                             onClick={() => openEditModal(task)}
                             className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 transition-all hover:bg-neutral-800 hover:text-white"
-                            title="Edit / Delete"
+                            title="Edit task"
                           >
                             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
                               edit
@@ -464,7 +478,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                           !canResubmit &&
                           !canVote &&
                           !hasVoted &&
-                          !(isAdmin && task.status === 'pending') && (
+                          !isAdminEditable(task.status) && (
                           <div className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-50 text-neutral-400 opacity-50">
                             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
                               check
@@ -510,7 +524,20 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       <Modal open={!!editTask} onClose={() => setEditTask(null)} title="Edit Task">
         {editTask && (
           <form onSubmit={handleEditTask} className="flex flex-col gap-4">
-            <p className="text-sm font-medium text-neutral-800">{editTask.title}</p>
+            {editTask.status !== 'pending' && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Reassigning this task resets it to pending and clears the current voting round.
+              </div>
+            )}
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Title</label>
+              <input
+                className="w-full rounded-lg border border-neutral-200 px-3 py-2"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                required
+              />
+            </div>
             <div>
               <label className="mb-1 block text-sm font-semibold">Assign To</label>
               <select
@@ -534,15 +561,40 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                 onChange={(e) => setEditDue(e.target.value)}
               />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-sm font-semibold">Reward Points</label>
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2"
+                  value={editReward}
+                  onChange={(e) => setEditReward(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold">Penalty Fine ($)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2"
+                  value={editPenalty}
+                  onChange={(e) => setEditPenalty(e.target.value)}
+                />
+              </div>
+            </div>
             <div className="flex gap-3">
-              <button
-                type="button"
-                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                disabled={deleting}
-                onClick={handleDeleteTask}
-              >
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
+              {editTask.status === 'pending' && (
+                <button
+                  type="button"
+                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                  disabled={deleting}
+                  onClick={handleDeleteTask}
+                >
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              )}
               <button
                 type="button"
                 className="flex-1 rounded-lg bg-neutral-100 py-2 font-semibold"
@@ -731,7 +783,6 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
 
       <TaskDetailsModal
         task={viewTask}
-        houseId={houseId}
         members={members}
         currentUserId={user?.id}
         isAdmin={isAdmin}
@@ -751,6 +802,12 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
         onVote={() => {
           if (viewTask) {
             setVoteTask(viewTask);
+            setViewTask(null);
+          }
+        }}
+        onEdit={() => {
+          if (viewTask) {
+            openEditModal(viewTask);
             setViewTask(null);
           }
         }}

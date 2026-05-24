@@ -4,7 +4,7 @@ import * as houseService from '../house/house.service';
 /**
  * Generate a dynamic leaderboard for a house based on tasks and penalties.
  *
- * Score Formula: (approved_tasks * 10) - sum(penalty_points)
+ * Score Formula: sum(completed_task_reward_points) - sum(unpaid_penalty_points)
  *
  * Includes only active members.
  *
@@ -29,6 +29,7 @@ export async function getHouseLeaderboard(houseId: string, userId: string) {
             u.id AS user_id,
             u.name AS user_name,
             COALESCE(SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_tasks,
+            COALESCE(SUM(CASE WHEN t.status = 'completed' THEN t.reward_points ELSE 0 END), 0) AS total_reward_points,
             COALESCE((
                 SELECT SUM(p.points) 
                 FROM penalties p 
@@ -37,7 +38,7 @@ export async function getHouseLeaderboard(houseId: string, userId: string) {
                   AND t2.house_id = hm.house_id
                   AND p.status = 'unpaid'
             ), 0) AS total_penalty_points,
-            (COALESCE(SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END), 0) * 10) 
+            COALESCE(SUM(CASE WHEN t.status = 'completed' THEN t.reward_points ELSE 0 END), 0)
             - COALESCE((
                 SELECT SUM(p.points) 
                 FROM penalties p 

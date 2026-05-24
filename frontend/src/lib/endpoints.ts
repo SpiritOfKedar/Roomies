@@ -52,11 +52,7 @@ export const tasksApi = {
   }) =>
     api.post<{ success: boolean; data: Task }>(`/api/houses/${houseId}/tasks/assign`, body),
   submit: (_houseId: string, taskId: string, form: FormData) =>
-    api.post<{ success: boolean; data: Task }>(
-      `/api/tasks/${taskId}/submit`,
-      form,
-      { headers: { 'Content-Type': 'multipart/form-data' } }
-    ),
+    api.post<{ success: boolean; data: Task }>(`/api/tasks/${taskId}/submit`, form),
   get: (taskId: string) =>
     api.get<{ success: boolean; data: Task }>(`/api/tasks/${taskId}`),
   getVotes: (taskId: string) =>
@@ -71,8 +67,9 @@ export const tasksApi = {
   update: (
     houseId: string,
     taskId: string,
-    data: Partial<Pick<Task, 'title' | 'deadline' | 'rewardPoints' | 'penaltyFine'>> & {
+    data: Partial<Pick<Task, 'title' | 'deadline' | 'rewardPoints'>> & {
       assignedTo?: string;
+      penaltyFine?: number;
     },
   ) =>
     api.patch<{ success: boolean; data: Task }>(`/api/houses/${houseId}/tasks/${taskId}`, data),
@@ -83,11 +80,7 @@ export const tasksApi = {
   getFeed: (taskId: string) =>
     api.get<{ success: boolean; data: TaskFeed }>(`/api/tasks/${taskId}/feed`),
   addComment: (taskId: string, form: FormData) =>
-    api.post<{ success: boolean; data: TaskCommentNode }>(
-      `/api/tasks/${taskId}/comments`,
-      form,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
-    ),
+    api.post<{ success: boolean; data: TaskCommentNode }>(`/api/tasks/${taskId}/comments`, form),
   deleteComment: (taskId: string, commentId: string) =>
     api.delete(`/api/tasks/${taskId}/comments/${commentId}`),
 };
@@ -99,11 +92,7 @@ export const messagesApi = {
       params: { limit, ...(before ? { before } : {}) },
     }),
   send: (houseId: string, form: FormData) =>
-    api.post<{ success: boolean; data: HouseMessage }>(
-      `/api/houses/${houseId}/messages`,
-      form,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
-    ),
+    api.post<{ success: boolean; data: HouseMessage }>(`/api/houses/${houseId}/messages`, form),
 };
 
 // ── Expenses ──────────────────────────────────────────────────────────────────
@@ -113,11 +102,7 @@ export const expensesApi = {
       params: { limit, offset: (page - 1) * limit },
     }),
   create: (houseId: string, form: FormData) =>
-    api.post<{ success: boolean; data: Expense }>(
-      `/api/houses/${houseId}/expenses`,
-      form,
-      { headers: { 'Content-Type': 'multipart/form-data' } }
-    ),
+    api.post<{ success: boolean; data: Expense }>(`/api/houses/${houseId}/expenses`, form),
   settleSplit: (houseId: string, _expenseId: string, splitId: string) =>
     api.post<{ success: boolean; data: ExpenseSplit }>(
       `/api/houses/${houseId}/expenses/splits/${splitId}/settle`
