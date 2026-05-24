@@ -10,6 +10,7 @@ import ChoreFeed from './ChoreFeed';
 import SubmissionTimeline from './SubmissionTimeline';
 import { useTaskPolling } from '@/hooks/useTaskPolling';
 import { resolveTaskProofUrl } from '@/lib/proofUrl';
+import { formatINR } from '@/lib/currency';
 
 interface Props {
   task: Task | null;
@@ -21,31 +22,39 @@ interface Props {
   onResubmit: () => void;
   onVote: () => void;
   onEdit?: () => void;
+  onDelete?: () => void;
 }
 
-const STATUS_STYLES: Record<string, { badge: string; dot: string }> = {
-  pending: { badge: 'bg-neutral-100 text-neutral-700', dot: 'bg-neutral-400' },
-  submitted: { badge: 'bg-blue-50 text-blue-700', dot: 'bg-blue-500' },
-  completed: { badge: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
-  disputed: { badge: 'bg-amber-50 text-amber-800', dot: 'bg-amber-500' },
-  rejected: { badge: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
-  expired: { badge: 'bg-orange-50 text-orange-700', dot: 'bg-orange-500' },
+type DetailTab = 'overview' | 'history' | 'discussion';
+
+const STATUS_STYLES: Record<string, string> = {
+  pending: 'bg-neutral-100 text-neutral-700',
+  submitted: 'bg-blue-50 text-blue-700',
+  completed: 'bg-emerald-50 text-emerald-700',
+  disputed: 'bg-amber-50 text-amber-800',
+  rejected: 'bg-red-50 text-red-700',
+  expired: 'bg-orange-50 text-orange-700',
 };
 
-function MetaItem({ label, children }: { label: string; children: React.ReactNode }) {
+function ProofImage({ task, className }: { task: Task; className?: string }) {
+  const proof = resolveTaskProofUrl(task);
+  if (proof.url) {
+    return (
+      <img
+        src={proof.url}
+        alt="Task proof"
+        className={className ?? 'w-full rounded-xl border border-neutral-200 object-cover'}
+      />
+    );
+  }
   return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</p>
-      <div className="text-sm font-medium text-neutral-900">{children}</div>
-    </div>
-  );
-}
-
-function MetaItemFixed({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</p>
-      <div className="text-sm font-medium text-neutral-900">{children}</div>
+    <div
+      className={
+        className ??
+        'flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center text-sm text-neutral-500'
+      }
+    >
+      {proof.legacy ? 'Proof unavailable (legacy upload)' : 'No proof image attached'}
     </div>
   );
 }
@@ -60,6 +69,7 @@ export default function TaskDetailsModal({
   onResubmit,
   onVote,
   onEdit,
+  onDelete,
 }: Props) {
   const [detailTask, setDetailTask] = useState<Task | null>(task);
   const [feed, setFeed] = useState<TaskFeed | null>(null);
@@ -67,16 +77,13 @@ export default function TaskDetailsModal({
   const [feedLoading, setFeedLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [voteStatus, setVoteStatus] = useState<TaskVoteStatus | null>(null);
+  const [tab, setTab] = useState<DetailTab>('overview');
 
   const isAssignee = detailTask?.assignedTo === currentUserId;
-  const proof = resolveTaskProofUrl(detailTask);
-  const statusStyle = STATUS_STYLES[detailTask?.status ?? 'pending'] ?? STATUS_STYLES.pending;
-
   const assigneeMember = useMemo(
     () => members.find((m) => m.userId === detailTask?.assignedTo),
     [members, detailTask?.assignedTo],
   );
-
   const assigneeName =
     assigneeMember?.user?.name ?? detailTask?.assignee?.name ?? 'Unknown member';
 
@@ -125,17 +132,16 @@ export default function TaskDetailsModal({
 
   useEffect(() => {
     setDetailTask(task);
+    setTab('overview');
     if (!task) {
       setFeed(null);
       setHistory(null);
       setVoteStatus(null);
       return;
     }
-
     refreshDetail();
     loadFeed();
     loadHistory();
-
     if (task.status === 'submitted') {
       tasksApi.getVotes(task.id).then((res) => setVoteStatus(res.data.data)).catch(() => {});
     } else {
@@ -155,161 +161,204 @@ export default function TaskDetailsModal({
     ['pending', 'submitted', 'disputed'].includes(detailTask.status);
 
   const submission = detailTask?.currentSubmission;
-  const hasSubmissionMeta = Boolean(submission || detailTask?.status === 'submitted' || detailTask?.status === 'disputed');
+
+  const footer = detailTask ? (
+    <div className="flex flex-wrap justify-end gap-2">
+      {canAdminEdit && onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+        >
+          Delete
+        </button>
+      )}
+      {canAdminEdit && onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+        >
+          Edit
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onClose}
+        className="rounded-lg bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-200"
+      >
+        Close
+      </button>
+      {isAssignee && detailTask.status === 'pending' && (
+        <button
+          type="button"
+          onClick={onSubmitProof}
+          className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800"
+        >
+          Submit Proof
+        </button>
+      )}
+      {isAssignee && detailTask.status === 'disputed' && (
+        <button
+          type="button"
+          onClick={onResubmit}
+          className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+        >
+          Resubmit
+        </button>
+      )}
+      {canVote && (
+        <button
+          type="button"
+          onClick={onVote}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        >
+          Review & Vote
+        </button>
+      )}
+    </div>
+  ) : null;
 
   return (
-    <Modal open={!!task} onClose={onClose} title="" size="lg">
+    <Modal
+      open={!!task}
+      onClose={onClose}
+      title={detailTask?.title ?? 'Task Details'}
+      size="xl"
+      footer={footer}
+    >
       {detailTask && (
-        <div className="flex flex-col gap-8 -mt-2">
-          {/* Header */}
-          <div className="space-y-4 border-b border-neutral-100 pb-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0 flex-1 space-y-2">
-                <h2 className="text-2xl font-bold tracking-tight text-neutral-900">{detailTask.title}</h2>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusStyle.badge}`}
-                  >
-                    <span className={`size-1.5 rounded-full ${statusStyle.dot}`} />
-                    {detailTask.status.charAt(0).toUpperCase() + detailTask.status.slice(1)}
-                  </span>
-                  {detailTask.isRecurring && (
-                    <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
-                      Recurring
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold text-emerald-600">+{detailTask.rewardPoints ?? 10}</p>
-                <p className="text-xs text-neutral-400">reward points</p>
-                {Number(detailTask.penaltyFine) > 0 && (
-                  <p className="mt-1 text-sm font-medium text-red-500">−${detailTask.penaltyFine} penalty</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Task overview grid */}
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            <MetaItem label="Assigned to">
-              {isAssignee ? 'You' : assigneeName}
+        <div className="space-y-5">
+          {/* Compact header row */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[detailTask.status] ?? STATUS_STYLES.pending}`}
+            >
+              {detailTask.status}
+            </span>
+            <span className="text-sm text-neutral-500">
+              {isAssignee ? 'Assigned to you' : assigneeName}
               {assigneeMember?.role && (
-                <span className="ml-1.5 text-xs font-normal capitalize text-neutral-400">
-                  ({assigneeMember.role})
-                </span>
+                <span className="ml-1 capitalize">· {assigneeMember.role}</span>
               )}
-            </MetaItem>
-            <MetaItem label="Deadline">
-              {detailTask.deadline
-                ? format(new Date(detailTask.deadline), 'MMM d, yyyy · h:mm a')
-                : '—'}
-            </MetaItem>
-            <MetaItem label="Created">
-              {format(new Date(detailTask.createdAt), 'MMM d, yyyy')}
-            </MetaItem>
-            <MetaItem label="Attempts">
-              {submission?.attemptNumber ?? 0}
-              {detailTask.maxResubmissions != null && (
-                <span className="text-neutral-400"> / {detailTask.maxResubmissions} max</span>
-              )}
-            </MetaItem>
+            </span>
+            <span className="text-sm font-semibold text-emerald-600">
+              +{detailTask.rewardPoints ?? 10} pts
+            </span>
+            {Number(detailTask.penaltyFine) > 0 && (
+              <span className="text-sm text-red-500">
+                {formatINR(detailTask.penaltyFine)} penalty
+              </span>
+            )}
+            <span className="text-sm text-neutral-400">
+              Due {format(new Date(detailTask.deadline), 'MMM d, h:mm a')}
+            </span>
           </div>
 
-          {/* Submission metadata */}
-          {hasSubmissionMeta && (
-            <div className="rounded-2xl border border-neutral-200 bg-neutral-50/80 p-6">
-              <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-                Latest Submission
-              </h3>
-              <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
-                <div className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <MetaItemFixed label="Submitted by">
-                      {assigneeName}
-                      {assigneeMember?.role && (
-                        <p className="mt-0.5 text-xs font-normal capitalize text-neutral-500">
-                          {assigneeMember.role}
+          {/* Tabs */}
+          <div className="flex gap-1 border-b border-neutral-200">
+            {(
+              [
+                { id: 'overview' as const, label: 'Overview' },
+                { id: 'history' as const, label: 'History' },
+                { id: 'discussion' as const, label: 'Discussion' },
+              ] as const
+            ).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+                  tab === id
+                    ? 'border-b-2 border-neutral-900 text-neutral-900 -mb-px'
+                    : 'text-neutral-500 hover:text-neutral-700'
+                }`}
+              >
+                {label}
+                {id === 'history' && (history?.rounds.length ?? 0) > 0 && (
+                  <span className="ml-1.5 text-xs text-neutral-400">({history!.rounds.length})</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab panels */}
+          {tab === 'overview' && (
+            <div className="space-y-6">
+              {(submission || detailTask.status === 'submitted' || detailTask.status === 'disputed') ? (
+                <div className="rounded-xl border border-neutral-200 p-5">
+                  <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    Current submission
+                  </h3>
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="text-neutral-500">Submitted by </span>
+                        <span className="font-medium text-neutral-900">{assigneeName}</span>
+                        {assigneeMember?.role && (
+                          <span className="ml-1 capitalize text-neutral-400">({assigneeMember.role})</span>
+                        )}
+                      </div>
+                      {submission?.createdAt && (
+                        <div className="text-neutral-600">
+                          {format(new Date(submission.createdAt), 'MMM d, yyyy · h:mm a')}
+                          <span className="ml-2 text-neutral-400">
+                            ({formatDistanceToNow(new Date(submission.createdAt), { addSuffix: true })})
+                          </span>
+                        </div>
+                      )}
+                      {submission?.clarification && (
+                        <div className="rounded-lg bg-neutral-50 p-3 text-neutral-700">
+                          {submission.clarification}
+                        </div>
+                      )}
+                      {detailTask.status === 'submitted' && (
+                        <VoteProgressBar voteStatus={voteStatus} />
+                      )}
+                      {voteStatus?.userVote && (
+                        <p className="font-medium text-emerald-700">
+                          You voted: <span className="capitalize">{voteStatus.userVote.vote}</span>
                         </p>
                       )}
-                    </MetaItemFixed>
-                    <MetaItemFixed label="Submitted at">
-                      {submission?.createdAt ? (
-                        <>
-                          {format(new Date(submission.createdAt), 'MMM d, yyyy · h:mm a')}
-                          <p className="mt-0.5 text-xs font-normal text-neutral-500">
-                            {formatDistanceToNow(new Date(submission.createdAt), { addSuffix: true })}
-                          </p>
-                        </>
-                      ) : (
-                        '—'
-                      )}
-                    </MetaItemFixed>
+                    </div>
+                    <ProofImage task={detailTask} className="aspect-video w-full rounded-xl border border-neutral-200 object-cover" />
                   </div>
-                  {submission?.clarification && (
-                    <MetaItemFixed label="Note">
-                      <p className="font-normal leading-relaxed text-neutral-700">{submission.clarification}</p>
-                    </MetaItemFixed>
-                  )}
-                  {detailTask.status === 'submitted' && (
-                    <VoteProgressBar voteStatus={voteStatus} />
-                  )}
-                  {voteStatus?.userVote && (
-                    <p className="text-sm font-medium text-emerald-700">
-                      You voted: <span className="capitalize">{voteStatus.userVote.vote}</span>
-                    </p>
-                  )}
                 </div>
+              ) : (
+                <ProofImage task={detailTask} />
+              )}
 
+              <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
                 <div>
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">Proof image</p>
-                  {proof.url ? (
-                    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-                      <img
-                        src={proof.url}
-                        alt="Task proof"
-                        className="aspect-[4/3] w-full object-cover"
-                      />
-                    </div>
-                  ) : proof.legacy ? (
-                    <div className="flex aspect-[4/3] items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-white p-4 text-center text-sm text-neutral-500">
-                      Proof unavailable (legacy upload)
-                    </div>
-                  ) : (
-                    <div className="flex aspect-[4/3] items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-white p-4 text-center text-sm text-neutral-500">
-                      No proof image attached
-                    </div>
-                  )}
+                  <p className="text-xs text-neutral-400">Created</p>
+                  <p className="font-medium">{format(new Date(detailTask.createdAt), 'MMM d, yyyy')}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-neutral-400">Attempts</p>
+                  <p className="font-medium">
+                    {submission?.attemptNumber ?? 0}
+                    {detailTask.maxResubmissions != null && ` / ${detailTask.maxResubmissions}`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-neutral-400">Recurring</p>
+                  <p className="font-medium">{detailTask.isRecurring ? 'Yes' : 'No'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-neutral-400">Assignee</p>
+                  <p className="font-medium">{isAssignee ? 'You' : assigneeName}</p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Proof for pending tasks with prior image */}
-          {!hasSubmissionMeta && proof.url && (
+          {tab === 'history' && (
             <div>
-              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Proof</h3>
-              <div className="overflow-hidden rounded-xl border border-neutral-200">
-                <img src={proof.url} alt="Task proof" className="max-h-64 w-full object-cover" />
-              </div>
-            </div>
-          )}
-
-          {/* Submission history */}
-          {(history?.rounds.length ?? 0) > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-                Submission History
-              </h3>
               <SubmissionTimeline history={history} loading={historyLoading} />
             </div>
           )}
 
-          {/* Activity feed */}
-          <div className="space-y-4 border-t border-neutral-100 pt-6">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-              Activity & Discussion
-            </h3>
+          {tab === 'discussion' && (
             <ChoreFeed
               taskId={detailTask.id}
               feed={feed}
@@ -317,55 +366,9 @@ export default function TaskDetailsModal({
               currentUserId={currentUserId}
               isAdmin={isAdmin}
               onRefresh={loadFeed}
+              hideSubmissionItems
             />
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-wrap justify-end gap-2 border-t border-neutral-100 pt-6">
-            {canAdminEdit && onEdit && (
-              <button
-                type="button"
-                onClick={onEdit}
-                className="rounded-lg border border-neutral-200 px-5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
-              >
-                Edit Task
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg bg-neutral-100 px-5 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-neutral-200"
-            >
-              Close
-            </button>
-            {isAssignee && detailTask.status === 'pending' && (
-              <button
-                type="button"
-                onClick={onSubmitProof}
-                className="rounded-lg bg-black px-5 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800"
-              >
-                Submit Proof
-              </button>
-            )}
-            {isAssignee && detailTask.status === 'disputed' && (
-              <button
-                type="button"
-                onClick={onResubmit}
-                className="rounded-lg bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-700"
-              >
-                Resubmit Proof
-              </button>
-            )}
-            {canVote && (
-              <button
-                type="button"
-                onClick={onVote}
-                className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                Review & Vote
-              </button>
-            )}
-          </div>
+          )}
         </div>
       )}
     </Modal>

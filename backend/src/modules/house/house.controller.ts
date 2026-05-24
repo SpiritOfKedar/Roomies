@@ -99,8 +99,7 @@ export async function addMemberByEmail(req: Request, res: Response): Promise<voi
 
 /**
  * PATCH /api/houses/:id/members/:userId
- * Update the status of a house member ('active' | 'on_leave' | 'inactive').
- * Admin only. Setting a member to 'inactive' automatically expires their pending tasks.
+ * Update member status. Admin for others; self for leave/vacation.
  */
 export async function updateMemberStatus(req: Request, res: Response): Promise<void> {
   const requestingUserId = req.user!.userId;
@@ -108,6 +107,24 @@ export async function updateMemberStatus(req: Request, res: Response): Promise<v
   const { status } = req.body as UpdateMemberStatusInput;
 
   const member = await houseService.updateMemberStatus(requestingUserId, houseId, userId, status);
+
+  sendSuccess(res, member);
+}
+
+/**
+ * POST /api/houses/:id/leave
+ * Leave the house (self-deactivate membership).
+ */
+export async function leaveHouse(req: Request, res: Response): Promise<void> {
+  const requestingUserId = req.user!.userId;
+  const { id: houseId } = req.params as unknown as HouseIdParams;
+
+  const member = await houseService.updateMemberStatus(
+    requestingUserId,
+    houseId,
+    requestingUserId,
+    'inactive',
+  );
 
   sendSuccess(res, member);
 }

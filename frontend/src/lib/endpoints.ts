@@ -31,6 +31,8 @@ export const housesApi = {
     api.post<{ success: boolean; data: House }>('/api/houses/join', { inviteCode }),
   updateMember: (houseId: string, userId: string, status: string) =>
     api.patch(`/api/houses/${houseId}/members/${userId}`, { status }),
+  leave: (houseId: string) =>
+    api.post(`/api/houses/${houseId}/leave`),
   addMemberByEmail: (houseId: string, email: string) =>
     api.post<{ success: boolean; data: House }>(`/api/houses/${houseId}/members/email`, { email }),
 };

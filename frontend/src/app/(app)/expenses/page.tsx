@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import Modal from '@/components/Modal';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { formatINR } from '@/lib/currency';
 
 const CATEGORY_ICONS = ['wifi', 'shopping_cart', 'water_drop', 'cleaning_services', 'restaurant', 'local_gas_station', 'electric_bolt', 'build'];
 
@@ -122,14 +123,14 @@ export default function ExpensesPage() {
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">Total Spending</span>
             <span className="material-symbols-outlined text-[#737373]" style={{ fontSize: '18px' }}>account_balance_wallet</span>
           </div>
-          <span className="text-3xl font-extrabold text-[#171717]">${totalSpending.toFixed(2)}</span>
+          <span className="text-3xl font-extrabold text-[#171717]">{formatINR(totalSpending)}</span>
         </div>
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">You are owed</span>
             <span className="material-symbols-outlined text-emerald-500" style={{ fontSize: '18px' }}>arrow_upward</span>
           </div>
-          <span className="text-3xl font-extrabold text-emerald-600">+${totalOwedToYou.toFixed(2)}</span>
+          <span className="text-3xl font-extrabold text-emerald-600">+{formatINR(totalOwedToYou)}</span>
         </div>
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -137,7 +138,7 @@ export default function ExpensesPage() {
             <span className="material-symbols-outlined text-red-500" style={{ fontSize: '18px' }}>arrow_downward</span>
           </div>
           <span className={`text-3xl font-extrabold ${totalOwed > 0 ? 'text-red-600' : 'text-[#737373]'}`}>
-            ${totalOwed.toFixed(2)}
+            {formatINR(totalOwed)}
           </span>
         </div>
       </div>
@@ -196,7 +197,7 @@ export default function ExpensesPage() {
                   </span>
                 </div>
                 <div className="col-span-4 md:col-span-2 text-right">
-                  <span className="text-lg font-bold text-[#171717]">${Number(exp.amount).toFixed(2)}</span>
+                  <span className="text-lg font-bold text-[#171717]">{formatINR(exp.amount)}</span>
                 </div>
                 <div className="col-span-2 md:col-span-1 flex justify-end md:justify-center">
                   <span className={`material-symbols-outlined text-[#737373] transition-transform ${expanded.has(exp.id) ? 'rotate-180' : ''}`} style={{ fontSize: '20px' }}>
@@ -227,7 +228,7 @@ export default function ExpensesPage() {
                             }`}>
                             {split.status === 'settled' ? 'Settled' : 'Unpaid'}
                           </span>
-                          <span className="text-sm font-bold text-[#171717]">${Number(split.amount).toFixed(2)}</span>
+                          <span className="text-sm font-bold text-[#171717]">{formatINR(split.amount)}</span>
                           {split.owedBy === user?.id && split.status !== 'settled' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleSettle(exp, split.id); }}
@@ -263,7 +264,7 @@ export default function ExpensesPage() {
               onChange={e => setAddTitle(e.target.value)} required />
           </div>
           <div>
-            <label className="label">Amount ($)</label>
+            <label className="label">Amount (₹)</label>
             <input className="input" type="number" min="0.01" step="0.01" placeholder="0.00"
               value={addAmount} onChange={e => setAddAmount(e.target.value)} required />
           </div>

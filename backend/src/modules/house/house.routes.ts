@@ -82,13 +82,22 @@ router.post(
 
 /**
  * PATCH /api/houses/:id/members/:userId
- * Update a member's status: 'active' | 'on_leave' | 'inactive'.
- * Admin only. Setting to 'inactive' auto-expires pending tasks.
+ * Update a member's status. Admins may update any member; users may update themselves (leave / vacation).
  */
 router.patch(
   '/:id/members/:userId',
   validate({ params: memberParamsSchema, body: updateMemberStatusBodySchema }),
   asyncHandler(houseController.updateMemberStatus),
+);
+
+/**
+ * POST /api/houses/:id/leave
+ * Leave the house (sets membership to inactive).
+ */
+router.post(
+  '/:id/leave',
+  validate({ params: houseIdParamsSchema }),
+  asyncHandler(houseController.leaveHouse),
 );
 
 export default router;

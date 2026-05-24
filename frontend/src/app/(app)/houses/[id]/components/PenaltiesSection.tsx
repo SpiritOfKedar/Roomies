@@ -5,6 +5,7 @@ import type { Penalty, HouseMember } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { formatINR } from '@/lib/currency';
 
 interface Props { houseId: string; members: HouseMember[]; isAdmin: boolean; }
 
@@ -78,7 +79,7 @@ export default function PenaltiesSection({ houseId, members, isAdmin }: Props) {
             </div>
             <div className="col-span-4 text-sm text-slate-300 truncate max-w-xs">{penalty.reason}</div>
             <div className="col-span-2 text-right">
-              <span className="text-red-400 font-bold text-base">-${Number(penalty.fineAmount).toFixed(2)}</span>
+              <span className="text-red-400 font-bold text-base">−{formatINR(penalty.fineAmount)}</span>
             </div>
             <div className="col-span-2 text-sm text-slate-400 font-medium">{format(new Date(penalty.createdAt), 'MMM d, yyyy')}</div>
             <div className="col-span-1 flex justify-center">

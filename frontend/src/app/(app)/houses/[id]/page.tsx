@@ -37,9 +37,13 @@ export default function HousePage() {
   const [addMemberEmail, setAddMemberEmail] = useState('');
   const [addingMember, setAddingMember] = useState(false);
 
-  // Manage Roommate state
+  // Manage roommate state
   const [manageRoommateId, setManageRoommateId] = useState<string | null>(null);
   const [managingRoommate, setManagingRoommate] = useState(false);
+
+  // Manage house / leave
+  const [showManageHouse, setShowManageHouse] = useState(false);
+  const [leavingHouse, setLeavingHouse] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -79,6 +83,24 @@ export default function HousePage() {
       toast.error('Failed to add member. Check the email and try again.');
     } finally {
       setAddingMember(false);
+    }
+  };
+
+  const handleLeaveHouse = async () => {
+    if (!id || !confirm('Leave this house? You will lose access to its tasks and expenses.')) return;
+    setLeavingHouse(true);
+    try {
+      await housesApi.leave(id as string);
+      toast.success('You have left the house');
+      router.push('/dashboard');
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        'Failed to leave house';
+      toast.error(msg);
+    } finally {
+      setLeavingHouse(false);
+      setShowManageHouse(false);
     }
   };
 
@@ -132,7 +154,11 @@ export default function HousePage() {
                   </div>
                 )}
                 <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <button className="flex items-center gap-2 bg-white border border-[#E5E5E5] hover:border-black text-[#171717] px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setShowManageHouse(true)}
+                    className="flex items-center gap-2 bg-white border border-[#E5E5E5] hover:border-black text-[#171717] px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm text-sm"
+                  >
                     <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>settings</span>
                     Manage House
                   </button>
@@ -216,6 +242,47 @@ export default function HousePage() {
           </form>
         </Modal>
       )}
+
+      {/* Manage House Modal */}
+      <Modal open={showManageHouse} onClose={() => setShowManageHouse(false)} title="Manage House">
+        <div className="flex flex-col gap-5">
+          {house.inviteCode && isAdmin && (
+            <div>
+              <p className="text-sm font-semibold text-[#171717]">Invite code</p>
+              <div className="mt-2 flex items-center gap-2">
+                <code className="flex-1 rounded-lg bg-neutral-100 px-3 py-2 font-mono text-sm">{house.inviteCode}</code>
+                <button
+                  type="button"
+                  onClick={() => { navigator.clipboard.writeText(house.inviteCode!); toast.success('Copied!'); }}
+                  className="rounded-lg border border-neutral-200 px-3 py-2 text-sm font-semibold hover:bg-neutral-50"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+          )}
+          {isAdmin && (
+            <p className="text-sm text-[#737373]">
+              Tap a roommate avatar above to remove them from the house. Pending tasks assigned to removed members are expired automatically.
+            </p>
+          )}
+          <div className="border-t border-neutral-100 pt-4">
+            <p className="text-sm font-semibold text-[#171717]">Leave house</p>
+            <p className="mt-1 text-sm text-[#737373]">
+              You will no longer see this house&apos;s tasks, expenses, or chat.
+              {isAdmin && ' If you are the only admin, promote someone else first.'}
+            </p>
+            <button
+              type="button"
+              onClick={handleLeaveHouse}
+              disabled={leavingHouse}
+              className="mt-3 w-full rounded-lg border border-red-200 bg-red-50 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+            >
+              {leavingHouse ? 'Leaving…' : 'Leave House'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Manage/Remove Roommate Modal */}
       {isAdmin && (

@@ -59,7 +59,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
   const [assignDue, setAssignDue] = useState('');
   const [assignUser, setAssignUser] = useState('');
   const [assignWeight, setAssignWeight] = useState(1);
-  const [assignIsRecurring, setAssignIsRecurring] = useState(true);
+  const [assignIsRecurring, setAssignIsRecurring] = useState(false);
   const [assignCronSchedule, setAssignCronSchedule] = useState('');
   const [assigning, setAssigning] = useState(false);
 
@@ -79,8 +79,10 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
   const [editPenalty, setEditPenalty] = useState('50');
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const limit = 10;
+  const fetchLimit = 100;
 
   const isAdminEditable = (status: string) =>
     isAdmin && ['pending', 'submitted', 'disputed'].includes(status);
@@ -93,10 +95,10 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await tasksApi.list(houseId, page, limit);
+      const res = await tasksApi.list(houseId, 1, fetchLimit);
       const items = res.data.data?.items ?? [];
       setTasks(items);
-      setTotal(res.data.data?.total ?? 0);
+      setTotal(items.length);
 
       const submitted = items.filter((t) => t.status === 'submitted');
       const statuses: Record<string, TaskVoteStatus> = {};
@@ -117,10 +119,10 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       setVoteStatuses(statuses);
 
       if (needsListRefresh) {
-        const refresh = await tasksApi.list(houseId, page, limit);
+        const refresh = await tasksApi.list(houseId, 1, fetchLimit);
         const refreshed = refresh.data.data?.items ?? [];
         setTasks(refreshed);
-        setTotal(refresh.data.data?.total ?? 0);
+        setTotal(refreshed.length);
         const stillSubmitted = refreshed.filter((t) => t.status === 'submitted');
         const refreshedStatuses: Record<string, TaskVoteStatus> = {};
         await Promise.all(
@@ -140,7 +142,31 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [houseId, page]);
+  }, [houseId]);
+
+  const filteredTasks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return tasks;
+    return tasks.filter((t) => {
+      const assigneeName =
+        members.find((m) => m.userId === t.assignedTo)?.user?.name ?? t.assignee?.name ?? '';
+      return (
+        t.title.toLowerCase().includes(q) ||
+        t.status.toLowerCase().includes(q) ||
+        assigneeName.toLowerCase().includes(q)
+      );
+    });
+  }, [tasks, searchQuery, members]);
+
+  const pages = Math.max(1, Math.ceil(filteredTasks.length / limit));
+  const pagedTasks = useMemo(() => {
+    const start = (page - 1) * limit;
+    return filteredTasks.slice(start, start + limit);
+  }, [filteredTasks, page, limit]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
 
   useEffect(() => {
     load();
@@ -173,7 +199,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       setAssignDue('');
       setAssignUser('');
       setAssignWeight(1);
-      setAssignIsRecurring(true);
+      setAssignIsRecurring(false);
       setAssignCronSchedule('');
       load();
     } catch {
@@ -218,13 +244,15 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
     }
   };
 
-  const handleDeleteTask = async () => {
-    if (!editTask || !confirm('Delete this pending chore? This cannot be undone.')) return;
+  const handleDeleteTask = async (taskToDelete?: Task | null) => {
+    const target = taskToDelete ?? editTask;
+    if (!target || !confirm('Delete this task? This cannot be undone.')) return;
     setDeleting(true);
     try {
-      await tasksApi.delete(houseId, editTask.id);
+      await tasksApi.delete(houseId, target.id);
       toast.success('Task deleted');
       setEditTask(null);
+      setViewTask(null);
       load();
     } catch {
       toast.error('Failed to delete task');
@@ -253,8 +281,6 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       setSubmitting(false);
     }
   };
-
-  const pages = Math.ceil(total / limit);
 
   return (
     <div className="flex flex-col gap-6">
@@ -293,12 +319,15 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
           <input
             className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2.5 pl-12 pr-4 text-sm text-neutral-800 placeholder-neutral-400 transition-all focus:border-black focus:ring-1 focus:ring-black"
             placeholder="Search tasks..."
-            type="text"
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-neutral-500">
-            {total} task{total !== 1 ? 's' : ''}
+            {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}
+            {searchQuery.trim() ? ` matching "${searchQuery.trim()}"` : ''}
           </span>
           {isAdmin && (
             <button
@@ -320,7 +349,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
             <div key={i} className="h-16 animate-pulse rounded-xl bg-neutral-100" />
           ))}
         </div>
-      ) : tasks.length === 0 ? (
+      ) : filteredTasks.length === 0 ? (
         <div className="py-20 text-center text-neutral-400">
           <span className="material-symbols-outlined mb-2 text-neutral-300" style={{ fontSize: '48px' }}>
             task
@@ -343,7 +372,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {tasks.map((task, idx) => {
+                {pagedTasks.map((task, idx) => {
                   const isAssignee = task.assignedTo === user?.id;
                   const canSubmit = isAssignee && task.status === 'pending';
                   const canResubmit = isAssignee && task.status === 'disputed';
@@ -573,7 +602,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-semibold">Penalty Fine ($)</label>
+                <label className="mb-1 block text-sm font-semibold">Penalty Fine (₹)</label>
                 <input
                   type="number"
                   min={0}
@@ -585,12 +614,12 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
               </div>
             </div>
             <div className="flex gap-3">
-              {editTask.status === 'pending' && (
+              {isAdminEditable(editTask.status) && (
                 <button
                   type="button"
                   className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
                   disabled={deleting}
-                  onClick={handleDeleteTask}
+                  onClick={() => handleDeleteTask()}
                 >
                   {deleting ? 'Deleting…' : 'Delete'}
                 </button>
@@ -810,6 +839,9 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
             openEditModal(viewTask);
             setViewTask(null);
           }
+        }}
+        onDelete={() => {
+          if (viewTask) handleDeleteTask(viewTask);
         }}
       />
     </div>

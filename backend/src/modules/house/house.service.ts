@@ -12,7 +12,7 @@
  * =============================================================================
  */
 
-import { NotFoundError, ConflictError, ForbiddenError } from '../../shared/utils/app-error';
+import { NotFoundError, ConflictError, ForbiddenError, AppError } from '../../shared/utils/app-error';
 import * as houseRepo from './house.repository';
 import { logger } from '../../shared/utils/logger';
 import { prisma } from '../../shared/db/prisma';
@@ -252,28 +252,44 @@ export async function updateMemberStatus(
   targetUserId: string,
   status: 'active' | 'on_leave' | 'inactive',
 ): Promise<ReturnType<typeof houseRepo.updateMemberStatus>> {
-  // 1. Requester must be an active admin
-  await verifyAdminRole(houseId, requestingUserId);
-
-  // 2. Target user must be an existing member of the house
   const member = await houseRepo.findMemberRecord(houseId, targetUserId);
   if (!member) {
     throw NotFoundError('House member');
   }
 
-  // 3. Update the membership status
+  const isSelf = requestingUserId === targetUserId;
+
+  if (isSelf) {
+    await verifyMembership(houseId, requestingUserId);
+    if (status === 'active') {
+      throw new AppError('Use admin tools to reactivate membership', 400);
+    }
+    if (status === 'inactive' && member.role === 'admin') {
+      const adminCount = await prisma.houseMember.count({
+        where: { houseId, role: 'admin', status: 'active', userId: { not: targetUserId } },
+      });
+      if (adminCount === 0) {
+        throw new AppError(
+          'You are the only admin. Promote another member before leaving the house.',
+          400,
+        );
+      }
+    }
+  } else {
+    await verifyAdminRole(houseId, requestingUserId);
+  }
+
   const updated = await houseRepo.updateMemberStatus(houseId, targetUserId, status);
 
-  // 4. Offboarding side-effect: expire all pending tasks so the queue never blocks
   if (status === 'inactive') {
     const expiredCount = await houseRepo.expirePendingTasksForMember(houseId, targetUserId);
     logger.info(
-      { houseId, targetUserId, expiredCount },
+      { houseId, targetUserId, expiredCount, isSelf },
       'Member deactivated — pending tasks expired',
     );
   }
 
-  logger.info({ houseId, targetUserId, status, requestingUserId }, 'Member status updated');
+  logger.info({ houseId, targetUserId, status, requestingUserId, isSelf }, 'Member status updated');
 
   return updated;
 }

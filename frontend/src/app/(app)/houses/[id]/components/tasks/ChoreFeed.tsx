@@ -14,6 +14,8 @@ interface Props {
   currentUserId?: string;
   isAdmin?: boolean;
   onRefresh: () => void;
+  /** Hide proof submission cards (shown in History tab instead) */
+  hideSubmissionItems?: boolean;
 }
 
 function activityLabel(item: TaskFeedItem): string {
@@ -191,6 +193,7 @@ export default function ChoreFeed({
   currentUserId,
   isAdmin,
   onRefresh,
+  hideSubmissionItems,
 }: Props) {
   const [body, setBody] = useState('');
   const [image, setImage] = useState<File | null>(null);
@@ -260,6 +263,7 @@ export default function ChoreFeed({
           const date = format(new Date(item.createdAt), 'MMM d, yyyy · h:mm a');
 
           if (item.kind === 'submission') {
+            if (hideSubmissionItems) return null;
             const img = resolveProofUrl(item.data.imageUrl as string | undefined);
             const votes = (item.data.votes as { userName: string; vote: string; reason?: string }[]) ?? [];
             return (
@@ -270,9 +274,11 @@ export default function ChoreFeed({
                 {item.data.clarification ? (
                   <p className="mt-2 text-sm text-neutral-700">{String(item.data.clarification)}</p>
                 ) : null}
-                {img && (
+                {img ? (
                   <img src={img} alt="Proof" className="mt-2 max-h-48 w-full rounded-lg object-cover" />
-                )}
+                ) : item.data.imageUrl ? (
+                  <p className="mt-2 text-xs text-neutral-500">Proof image unavailable</p>
+                ) : null}
                 {votes.length > 0 && (
                   <ul className="mt-2 space-y-1 text-sm text-neutral-600">
                     {votes.map((v, i) => (

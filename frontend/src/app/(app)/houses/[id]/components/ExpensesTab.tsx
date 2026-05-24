@@ -5,6 +5,7 @@ import type { Expense, HouseMember } from '@/types';
 import Modal from '@/components/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
+import { formatINR } from '@/lib/currency';
 import { format } from 'date-fns';
 
 interface Props { houseId: string; members: HouseMember[]; }
@@ -100,7 +101,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
               <span className="material-symbols-outlined block" style={{ fontSize: '20px' }}>calendar_month</span>
             </span>
           </div>
-          <div className="text-3xl font-extrabold text-white tracking-tight">${totalSpending.toFixed(2)}</div>
+          <div className="text-3xl font-extrabold text-white tracking-tight">{formatINR(totalSpending)}</div>
         </div>
         <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 p-6 rounded-2xl shadow-sm flex flex-col justify-between h-32">
           <div className="flex items-center justify-between">
@@ -109,7 +110,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
               <span className="material-symbols-outlined block" style={{ fontSize: '20px' }}>arrow_upward</span>
             </span>
           </div>
-          <div className="text-3xl font-extrabold text-green-400 tracking-tight">+${totalOwedToYou.toFixed(2)}</div>
+          <div className="text-3xl font-extrabold text-green-400 tracking-tight">+{formatINR(totalOwedToYou)}</div>
         </div>
         <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 p-6 rounded-2xl shadow-sm flex flex-col justify-between h-32">
           <div className="flex items-center justify-between">
@@ -119,7 +120,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
             </span>
           </div>
           <div className={`text-3xl font-extrabold tracking-tight ${totalOwed > 0 ? 'text-red-400' : 'text-slate-500'}`}>
-            ${totalOwed.toFixed(2)}
+            {formatINR(totalOwed)}
           </div>
         </div>
       </div>
@@ -189,7 +190,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
                   </span>
                 </div>
                 <div className="col-span-4 md:col-span-2 text-right mt-2 md:mt-0">
-                  <span className="text-lg font-bold text-white block">${Number(exp.amount).toFixed(2)}</span>
+                  <span className="text-lg font-bold text-white block">{formatINR(exp.amount)}</span>
                 </div>
                 <div className="col-span-2 md:col-span-1 flex justify-end md:justify-center mt-2 md:mt-0">
                   <span className={`material-symbols-outlined text-slate-400 hover:text-slate-200 transition-transform ${expanded.has(exp.id) ? 'rotate-180' : ''}`} style={{ fontSize: '20px' }}>
@@ -220,7 +221,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
                             }`}>
                             {split.status === 'settled' ? 'Settled' : 'Unpaid'}
                           </span>
-                          <span className="text-sm font-bold text-white">${Number(split.amount).toFixed(2)}</span>
+                          <span className="text-sm font-bold text-white">{formatINR(split.amount)}</span>
                           {split.owedBy === user?.id && split.status !== 'settled' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleSettle(exp.id, split.id); }}
@@ -272,7 +273,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
               onChange={e => setAddTitle(e.target.value)} required />
           </div>
           <div>
-            <label className="label">Amount ($)</label>
+            <label className="label">Amount (₹)</label>
             <input className="input" type="number" min="0.01" step="0.01" placeholder="0.00"
               value={addAmount} onChange={e => setAddAmount(e.target.value)} required />
           </div>

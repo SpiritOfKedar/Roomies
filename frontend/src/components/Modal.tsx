@@ -8,10 +8,19 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Pin action buttons below scrollable body */
+  footer?: React.ReactNode;
 }
 
-export default function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+export default function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  size = 'md',
+  footer,
+}: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,23 +36,45 @@ export default function Modal({ open, onClose, title, children, size = 'md' }: M
 
   if (!open) return null;
 
-  const sizeClass = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-2xl' }[size];
+  const sizeClass = {
+    sm: 'max-w-sm',
+    md: 'max-w-md',
+    lg: 'max-w-2xl',
+    xl: 'max-w-3xl',
+  }[size];
 
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div ref={ref} className={clsx('bg-white rounded-2xl shadow-2xl w-full', sizeClass)}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-bold text-primary">{title}</h2>
-          <button onClick={onClose} className="text-text-muted hover:text-primary transition-colors">
+      <div
+        ref={ref}
+        className={clsx(
+          'flex max-h-[min(92vh,880px)] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl',
+          sizeClass,
+        )}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
+          <h2 className="text-lg font-bold text-primary">{title || '\u00A0'}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-text-muted transition-colors hover:text-primary"
+          >
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">
+          {children}
+        </div>
+        {footer && (
+          <div className="shrink-0 border-t border-neutral-100 bg-white px-6 py-4">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

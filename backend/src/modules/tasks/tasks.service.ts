@@ -365,6 +365,22 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
     return { rotated: false, reason: 'not_recurring', skipped: true };
   }
 
+  const openDuplicate = await prisma.task.count({
+    where: {
+      houseId: completed.houseId,
+      title: completed.title,
+      id: { not: completedTaskId },
+      status: { in: ['pending', 'submitted', 'disputed'] },
+    },
+  });
+  if (openDuplicate > 0) {
+    await prisma.task.update({
+      where: { id: completedTaskId },
+      data: { rotationSpawnedAt: new Date() },
+    });
+    return { rotated: false, reason: 'open_instance_exists', skipped: true };
+  }
+
   const activeCount = await prisma.houseMember.count({
     where: { houseId: completed.houseId, status: 'active' },
   });
@@ -778,7 +794,7 @@ export async function updateTask(
 }
 
 /**
- * Admin delete of a pending task.
+ * Admin delete of an active task (pending, submitted, or disputed).
  */
 export async function deleteTask(
   requestingUserId: string,
@@ -792,16 +808,16 @@ export async function deleteTask(
     throw NotFoundError('Task');
   }
 
-  if (task.status !== 'pending') {
+  if (!ADMIN_EDITABLE_STATUSES.includes(task.status as (typeof ADMIN_EDITABLE_STATUSES)[number])) {
     throw new AppError(
-      `Cannot delete task in state '${task.status}'. Only 'pending' tasks can be deleted.`,
+      `Cannot delete task in state '${task.status}'. Only pending, submitted, or disputed tasks can be deleted.`,
       400,
     );
   }
 
   await prisma.task.delete({ where: { id: taskId } });
 
-  logger.info({ taskId, houseId, requestingUserId }, 'Admin deleted pending task');
+  logger.info({ taskId, houseId, requestingUserId, status: task.status }, 'Admin deleted task');
 
   return { deleted: true, taskId };
 }

@@ -29,6 +29,7 @@ export default function TasksPage() {
   const [showResubmit, setShowResubmit] = useState<Task | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,12 +65,21 @@ export default function TasksPage() {
   );
 
   const filtered = useMemo(() => {
-    const base = filter === 'all' ? allTasks : allTasks.filter((t) => t.task.status === filter);
-    return base;
-  }, [allTasks, filter]);
-
-  const myTasks = filtered.filter((t) => t.task.assignedTo === user?.id);
-  const otherTasks = filtered.filter((t) => t.task.assignedTo !== user?.id);
+    let list = myTasksAll;
+    if (filter !== 'all') {
+      list = list.filter((t) => t.task.status === filter);
+    }
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (t) =>
+          t.task.title.toLowerCase().includes(q) ||
+          t.house.name.toLowerCase().includes(q) ||
+          t.task.status.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [myTasksAll, filter, searchQuery]);
 
   const myCounts = useMemo(() => ({
     all: myTasksAll.length,
@@ -155,6 +165,22 @@ export default function TasksPage() {
         </div>
       )}
 
+      <div className="relative">
+        <span
+          className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+          style={{ fontSize: '20px' }}
+        >
+          search
+        </span>
+        <input
+          type="search"
+          placeholder="Search your tasks…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
+        />
+      </div>
+
       {/* Filters */}
       <div className="flex gap-1 overflow-x-auto border-b border-neutral-200 pb-px">
         {filterTabs.map(({ key, label }) => (
@@ -179,16 +205,15 @@ export default function TasksPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState filter={filter} />
+        <EmptyState filter={filter} search={searchQuery} />
       ) : (
-        <div className="space-y-10">
-          {myTasks.length > 0 && (
-            <TaskSection title="Your tasks" tasks={myTasks} isOwn onSubmit={setShowSubmit} onResubmit={setShowResubmit} />
-          )}
-          {otherTasks.length > 0 && (
-            <TaskSection title="Housemates" tasks={otherTasks} isOwn={false} onSubmit={() => {}} onResubmit={() => {}} />
-          )}
-        </div>
+        <TaskSection
+          title="Your tasks"
+          tasks={filtered}
+          isOwn
+          onSubmit={setShowSubmit}
+          onResubmit={setShowResubmit}
+        />
       )}
 
       <Modal open={!!showSubmit} onClose={() => setShowSubmit(null)} title="Submit Proof">
@@ -243,12 +268,16 @@ function StatCard({ label, value, accent }: { label: string; value: number; acce
   );
 }
 
-function EmptyState({ filter }: { filter: FilterStatus }) {
+function EmptyState({ filter, search }: { filter: FilterStatus; search?: string }) {
   return (
     <div className="py-16 text-center">
       <p className="font-medium text-neutral-800">No tasks found</p>
       <p className="mt-1 text-sm text-neutral-500">
-        {filter === 'all' ? 'Tasks assigned in your houses will appear here.' : `No ${filter} tasks right now.`}
+        {search?.trim()
+          ? `No tasks match "${search.trim()}".`
+          : filter === 'all'
+            ? 'Tasks assigned to you will appear here.'
+            : `No ${filter} tasks right now.`}
       </p>
     </div>
   );
