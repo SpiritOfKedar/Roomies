@@ -1,5 +1,9 @@
 import { prisma } from '../../shared/db/prisma';
 import * as houseService from '../house/house.service';
+import {
+  cached,
+  houseLeaderboardKey,
+} from '../../shared/cache/redis-cache';
 
 /**
  * Generate a dynamic leaderboard for a house based on tasks and penalties.
@@ -12,10 +16,12 @@ import * as houseService from '../house/house.service';
  * @param userId - The requesting user (verified against members)
  */
 export async function getHouseLeaderboard(houseId: string, userId: string) {
-  // 1. Verify Requesting User is a Member
   await houseService.verifyMembership(houseId, userId);
 
-  // 2. Fetch Aggregated Metrics
+  return cached(houseLeaderboardKey(houseId), 60, () => fetchHouseLeaderboard(houseId));
+}
+
+async function fetchHouseLeaderboard(houseId: string) {
   const rawLeaderboard = await prisma.$queryRaw<
     Array<{
       user_id: string;

@@ -18,6 +18,14 @@ import { logger } from '../../shared/utils/logger';
 import { prisma } from '../../shared/db/prisma';
 import { Prisma } from '@prisma/client';
 import crypto from 'crypto';
+import {
+  cached,
+  getCachedMembership,
+  setCachedMembership,
+  invalidateHouseCache,
+  invalidateMembership,
+  houseDetailKey,
+} from '../../shared/cache/redis-cache';
 
 /**
  * Generate a short, URL-safe invite code (8 chars).
@@ -68,6 +76,8 @@ export async function createHouse(userId: string, name: string) {
   const houseWithMembers = await houseRepo.findHouseWithMembers(houseId);
 
   logger.info({ houseId, userId }, 'House created');
+
+  await invalidateHouseCache(houseId);
 
   return houseWithMembers;
 }
@@ -121,6 +131,9 @@ export async function joinHouse(userId: string, houseId: string) {
 
   logger.info({ houseId, userId }, 'User joined house');
 
+  await invalidateHouseCache(houseId);
+  await invalidateMembership(houseId, userId);
+
   return houseWithMembers;
 }
 
@@ -172,12 +185,11 @@ export async function addMemberByEmail(requestingUserId: string, houseId: string
  * @throws NotFoundError if house doesn't exist
  */
 export async function getHouse(userId: string, houseId: string) {
-  const house = await houseRepo.findHouseWithMembers(houseId);
+  const house = await cached(houseDetailKey(houseId), 30, () => houseRepo.findHouseWithMembers(houseId));
   if (!house) {
     throw NotFoundError('House');
   }
 
-  // Verify membership
   const isMember = house.members.some((m) => m.userId === userId);
   if (!isMember) {
     throw ForbiddenError('You are not a member of this house');
@@ -205,7 +217,15 @@ export async function getUserHouses(userId: string) {
  * @throws ForbiddenError if user is not an active member
  */
 export async function verifyMembership(houseId: string, userId: string): Promise<void> {
+  const cachedResult = await getCachedMembership(houseId, userId);
+  if (cachedResult === true) return;
+  if (cachedResult === false) {
+    throw ForbiddenError('You are not an active member of this house');
+  }
+
   const isActive = await houseRepo.isActiveMember(houseId, userId);
+  await setCachedMembership(houseId, userId, isActive);
+
   if (!isActive) {
     throw ForbiddenError('You are not an active member of this house');
   }
@@ -290,6 +310,9 @@ export async function updateMemberStatus(
   }
 
   logger.info({ houseId, targetUserId, status, requestingUserId, isSelf }, 'Member status updated');
+
+  await invalidateHouseCache(houseId);
+  await invalidateMembership(houseId, targetUserId);
 
   return updated;
 }

@@ -19,6 +19,7 @@ import { requireAuth } from '../../shared/middleware/require-auth';
 import { validate } from '../../shared/middleware/validate';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import * as tasksController from './tasks.controller';
+import * as votingController from '../voting/voting.controller';
 import {
   assignTaskSchema,
   taskIdParamsSchema,
@@ -69,6 +70,17 @@ houseTaskRoutes.get(
   '/',
   validate({ params: houseIdParamsSchema, query: paginationQuerySchema }),
   asyncHandler(tasksController.getTasksByHouse),
+);
+
+/**
+ * GET /api/houses/:id/tasks/vote-statuses?taskIds=id1,id2,...
+ * Returns vote status for multiple tasks in one request (eliminates N+1 from task list).
+ * Must be declared before /:taskId to avoid route conflict.
+ */
+houseTaskRoutes.get(
+  '/vote-statuses',
+  validate({ params: houseIdParamsSchema }),
+  asyncHandler(votingController.getVoteStatusBatch),
 );
 
 /**

@@ -44,6 +44,11 @@ import * as houseRepo from '../house/house.repository';
 import * as commentsRepo from './task-comments.repository';
 import { logTaskActivity } from './task-activity.service';
 import { buildTaskFeed } from './task-feed.service';
+import {
+  cached,
+  houseTasksKey,
+  invalidateHouseCache,
+} from '../../shared/cache/redis-cache';
 
 export interface RotationAssignOptions {
   excludeUserId?: string;
@@ -115,6 +120,8 @@ export async function assignNextTask(
       rotationOptions,
     });
   });
+
+  await invalidateHouseCache(houseId);
 
   return task;
 }
@@ -362,6 +369,7 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
       where: { id: completedTaskId },
       data: { rotationSpawnedAt: new Date() },
     });
+    await invalidateHouseCache(completed.houseId);
     return { rotated: false, reason: 'not_recurring', skipped: true };
   }
 
@@ -378,6 +386,7 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
       where: { id: completedTaskId },
       data: { rotationSpawnedAt: new Date() },
     });
+    await invalidateHouseCache(completed.houseId);
     return { rotated: false, reason: 'open_instance_exists', skipped: true };
   }
 
@@ -390,6 +399,7 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
       where: { id: completedTaskId },
       data: { rotationSpawnedAt: new Date() },
     });
+    await invalidateHouseCache(completed.houseId);
     return { rotated: false, reason: 'solo_house', skipped: true };
   }
 
@@ -450,6 +460,8 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
     },
     'Chore rotation: spawned next instance',
   );
+
+  await invalidateHouseCache(completed.houseId);
 
   return {
     rotated: true,
@@ -535,7 +547,7 @@ export async function submitTask(
 
   const newStatus = isSoloHouse ? 'completed' : 'submitted';
 
-  const updatedTask = await prisma.$transaction(async (tx) => {
+  const committed = await prisma.$transaction(async (tx) => {
     const statusCondition = isResubmit ? ['disputed'] : ['pending'];
     const resolvedImageUrl = imageUrl ?? task.imageUrl ?? null;
 
@@ -549,7 +561,7 @@ export async function submitTask(
     });
 
     if (updateResult.count === 0) {
-      return null;
+      return false;
     }
 
     const submission = await tx.taskSubmission.create({
@@ -568,11 +580,17 @@ export async function submitTask(
       },
     });
 
-    return tasksRepo.findTaskById(taskId);
+    return true;
   });
 
-  if (!updatedTask) {
+  if (!committed) {
     throw new AppError('Task state was modified concurrently. Please try again.', 409);
+  }
+
+  // Fetch after the transaction closes so we read committed data with global prisma
+  const updatedTask = await tasksRepo.findTaskById(taskId);
+  if (!updatedTask) {
+    throw new AppError('Task not found after submission update', 404);
   }
 
   logger.info(
@@ -597,6 +615,8 @@ export async function submitTask(
     await completeAndRotateTask(taskId);
   }
 
+  await invalidateHouseCache(task.houseId);
+
   return updatedTask;
 }
 
@@ -615,13 +635,17 @@ export async function getTasksByHouse(
   houseId: string,
   limit: number,
   offset: number,
+  statusFilter: 'active' | 'all' = 'active',
 ) {
-  // Verify membership before returning tasks
   await houseService.verifyMembership(houseId, userId);
 
-  const { tasks, total } = await tasksRepo.getTasksByHouse(houseId, limit, offset);
+  const { tasks, total, completedCount } = await cached(
+    `${houseTasksKey(houseId, statusFilter)}:${limit}:${offset}`,
+    15,
+    () => tasksRepo.getTasksByHouse(houseId, limit, offset, statusFilter),
+  );
 
-  return { tasks, total, limit, offset };
+  return { tasks, total, limit, offset, completedCount };
 }
 
 /**
@@ -790,6 +814,8 @@ export async function updateTask(
 
   logger.info({ taskId, houseId, requestingUserId, changes: data, isReassignment }, 'Admin updated task');
 
+  await invalidateHouseCache(houseId);
+
   return updated;
 }
 
@@ -818,6 +844,8 @@ export async function deleteTask(
   await prisma.task.delete({ where: { id: taskId } });
 
   logger.info({ taskId, houseId, requestingUserId, status: task.status }, 'Admin deleted task');
+
+  await invalidateHouseCache(houseId);
 
   return { deleted: true, taskId };
 }

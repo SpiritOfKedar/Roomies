@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { messagesApi } from '@/lib/endpoints';
+import { queryKeys } from '@/lib/query-keys';
 import type { HouseMessage, HouseMember } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { resolveProofUrl } from '@/lib/proofUrl';
@@ -11,7 +13,10 @@ import toast from 'react-hot-toast';
 interface Props {
   houseId: string;
   members: HouseMember[];
+  isActive?: boolean;
 }
+
+const POLL_INTERVAL_MS = 10_000;
 
 function dayLabel(date: Date): string {
   if (isToday(date)) return 'Today';
@@ -19,28 +24,57 @@ function dayLabel(date: Date): string {
   return format(date, 'MMMM d, yyyy');
 }
 
-export default function ChatTab({ houseId, members }: Props) {
+export default function ChatTab({ houseId, members, isActive = true }: Props) {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<HouseMessage[]>([]);
+  const queryClient = useQueryClient();
   const [body, setBody] = useState('');
   const [image, setImage] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastMessageIdRef = useRef<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
+  const { data: messages = [], isLoading } = useQuery({
+    queryKey: queryKeys.messages(houseId),
+    queryFn: async () => {
       const res = await messagesApi.list(houseId, 80);
-      setMessages(res.data.data ?? []);
-    } catch {
-      /* ignore poll errors */
-    }
-  }, [houseId]);
+      return res.data.data ?? [];
+    },
+    enabled: !!houseId,
+  });
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, 3000);
+    const last = messages[messages.length - 1];
+    lastMessageIdRef.current = last?.id ?? null;
+  }, [messages]);
+
+  useEffect(() => {
+    if (!isActive || !houseId) return;
+
+    const poll = async () => {
+      const after = lastMessageIdRef.current;
+      if (!after) return;
+
+      try {
+        const res = await messagesApi.list(houseId, 50, { after });
+        const incoming = res.data.data ?? [];
+        if (incoming.length === 0) return;
+
+        queryClient.setQueryData<HouseMessage[]>(queryKeys.messages(houseId), (prev = []) => {
+          const ids = new Set(prev.map((m) => m.id));
+          const merged = [...prev];
+          for (const msg of incoming) {
+            if (!ids.has(msg.id)) merged.push(msg);
+          }
+          return merged;
+        });
+      } catch {
+        /* ignore poll errors */
+      }
+    };
+
+    const id = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [load]);
+  }, [isActive, houseId, queryClient]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -55,7 +89,8 @@ export default function ChatTab({ houseId, members }: Props) {
       fd.append('body', body.trim());
       if (image) fd.append('image', image);
       const res = await messagesApi.send(houseId, fd);
-      setMessages((prev) => [...prev, res.data.data]);
+      const msg = res.data.data;
+      queryClient.setQueryData<HouseMessage[]>(queryKeys.messages(houseId), (prev = []) => [...prev, msg]);
       setBody('');
       setImage(null);
     } catch {
@@ -70,49 +105,56 @@ export default function ChatTab({ houseId, members }: Props) {
   return (
     <div className="flex h-[calc(100vh-220px)] min-h-[400px] flex-col rounded-xl border border-neutral-200 bg-white">
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.length === 0 && (
+        {isLoading ? (
+          <div className="space-y-3 py-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-12 animate-pulse rounded-xl bg-neutral-100" />
+            ))}
+          </div>
+        ) : messages.length === 0 ? (
           <p className="py-12 text-center text-sm text-neutral-500">
             No messages yet. Say hello to your housemates.
           </p>
-        )}
-        {messages.map((msg) => {
-          const d = new Date(msg.createdAt);
-          const day = dayLabel(d);
-          const showDay = day !== lastDay;
-          if (showDay) lastDay = day;
-          const isMine = msg.userId === user?.id;
-          const img = resolveProofUrl(msg.imageUrl);
+        ) : (
+          messages.map((msg) => {
+            const d = new Date(msg.createdAt);
+            const day = dayLabel(d);
+            const showDay = day !== lastDay;
+            if (showDay) lastDay = day;
+            const isMine = msg.userId === user?.id;
+            const img = resolveProofUrl(msg.imageUrl);
 
-          return (
-            <div key={msg.id}>
-              {showDay && (
-                <p className="my-4 text-center text-xs font-semibold text-neutral-400">{day}</p>
-              )}
-              <div className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2 ${
-                    isMine ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-900'
-                  }`}
-                >
-                  {!isMine && (
-                    <p className="mb-0.5 text-xs font-bold opacity-70">
-                      {msg.user?.name ?? members.find((m) => m.userId === msg.userId)?.user?.name}
-                    </p>
-                  )}
-                  <p className="whitespace-pre-wrap text-sm">{msg.body}</p>
-                  {img && (
-                    <img src={img} alt="" className="mt-2 max-h-48 rounded-lg object-cover" />
-                  )}
-                  <p
-                    className={`mt-1 text-[10px] ${isMine ? 'text-neutral-400' : 'text-neutral-500'}`}
+            return (
+              <div key={msg.id}>
+                {showDay && (
+                  <p className="my-4 text-center text-xs font-semibold text-neutral-400">{day}</p>
+                )}
+                <div className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-2 ${
+                      isMine ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-900'
+                    }`}
                   >
-                    {format(d, 'h:mm a')}
-                  </p>
+                    {!isMine && (
+                      <p className="mb-0.5 text-xs font-bold opacity-70">
+                        {msg.user?.name ?? members.find((m) => m.userId === msg.userId)?.user?.name}
+                      </p>
+                    )}
+                    <p className="whitespace-pre-wrap text-sm">{msg.body}</p>
+                    {img && (
+                      <img src={img} alt="" className="mt-2 max-h-48 rounded-lg object-cover" />
+                    )}
+                    <p
+                      className={`mt-1 text-[10px] ${isMine ? 'text-neutral-400' : 'text-neutral-500'}`}
+                    >
+                      {format(d, 'h:mm a')}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
         <div ref={bottomRef} />
       </div>
 

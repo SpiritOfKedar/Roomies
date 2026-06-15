@@ -35,16 +35,15 @@ export function startTaskSweeper() {
         `Task Sweeper: Found ${expiredTasks.length} expired tasks. Applying penalties...`,
       );
 
-      // Apply all penalties and update status atomically inside a chunked transaction
-      await prisma.$transaction(async (tx: Parameters<typeof penaltyService.applyPenalty>[0]) => {
-        for (const task of expiredTasks) {
-          // Update task status to expired
+      // One small transaction per task — avoids a single giant tx timing out on Neon
+      // and ensures a failure on one task never rolls back the others.
+      for (const task of expiredTasks) {
+        await prisma.$transaction(async (tx: Parameters<typeof penaltyService.applyPenalty>[0]) => {
           await tx.task.update({
             where: { id: task.id },
             data: { status: 'expired' },
           });
 
-          // Assign penalty points for expired task
           await penaltyService.applyPenalty(
             tx,
             task.assignedTo,
@@ -53,8 +52,8 @@ export function startTaskSweeper() {
             task.rewardPoints,
             Number(task.penaltyFine),
           );
-        }
-      });
+        });
+      }
 
       logger.info(`Task Sweeper: Successfully processed ${expiredTasks.length} expired tasks.`);
     } catch (error) {

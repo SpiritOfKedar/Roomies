@@ -1,6 +1,8 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { swapsApi, tasksApi } from '@/lib/endpoints';
+import { queryKeys } from '@/lib/query-keys';
 import type { TaskSwap, Task, HouseMember } from '@/types';
 import Modal from '@/components/Modal';
 import { useAuth } from '@/hooks/useAuth';
@@ -24,10 +26,8 @@ function SwapStatusBadge({ status }: { status: string }) {
 
 export default function SwapsTab({ houseId, members }: Props) {
   const { user } = useAuth();
-  const [swaps, setSwaps] = useState<TaskSwap[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  // Propose swap modal
   const [showPropose, setShowPropose] = useState(false);
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [targetTask, setTargetTask] = useState('');
@@ -35,26 +35,28 @@ export default function SwapsTab({ houseId, members }: Props) {
   const [targetUser, setTargetUser] = useState('');
   const [proposing, setProposing] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const { data: swaps = [], isLoading } = useQuery({
+    queryKey: queryKeys.swaps(houseId),
+    queryFn: async () => {
+      const swapRes = await swapsApi.list(houseId);
+      return swapRes.data.data ?? [];
+    },
+    enabled: !!houseId,
+  });
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.swaps(houseId) });
+  };
+
+  const loadMyTasks = async () => {
     try {
       const res = await tasksApi.list(houseId, 1, 100);
       const tasks = res.data.data?.items ?? [];
       setMyTasks(tasks.filter((t: Task) => t.assignedTo === user?.id && t.status === 'pending'));
-      try {
-        const swapRes = await swapsApi.list(houseId);
-        setSwaps(swapRes.data.data ?? []);
-      } catch {
-        setSwaps([]);
-      }
     } catch {
-      toast.error('Failed to load swaps');
-    } finally {
-      setLoading(false);
+      toast.error('Failed to load your tasks');
     }
-  }, [houseId, user?.id]);
-
-  useEffect(() => { load(); }, [load]);
+  };
 
   const handlePropose = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +70,7 @@ export default function SwapsTab({ houseId, members }: Props) {
       toast.success('Swap proposed!');
       setShowPropose(false);
       setOfferedTask(''); setTargetTask(''); setTargetUser('');
-      load();
+      refresh();
     } catch {
       toast.error('Failed to propose swap');
     } finally {
@@ -80,7 +82,7 @@ export default function SwapsTab({ houseId, members }: Props) {
     try {
       await swapsApi.resolve(houseId, swapId, action);
       toast.success(`Swap ${action}ed!`);
-      load();
+      refresh();
     } catch {
       toast.error(`Failed to ${action} swap`);
     }
@@ -92,7 +94,7 @@ export default function SwapsTab({ houseId, members }: Props) {
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-400 font-medium">{swaps.length} swap{swaps.length !== 1 ? 's' : ''}</p>
         <button
-          onClick={() => setShowPropose(true)}
+          onClick={() => { setShowPropose(true); loadMyTasks(); }}
           className="bg-gradient-to-r from-[#22d3ee] to-blue-500 text-slate-900 px-5 py-2.5 rounded-xl text-sm font-bold shadow-[0_0_15px_rgba(34,211,238,0.3)] hover:shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all flex items-center gap-2"
         >
           <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>swap_horiz</span>
@@ -100,7 +102,7 @@ export default function SwapsTab({ houseId, members }: Props) {
         </button>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-white/5 animate-pulse" />)}
         </div>

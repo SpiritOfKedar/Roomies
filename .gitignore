@@ -17,7 +17,6 @@ out/
 .env.development.local
 .env.test.local
 .env.production.local
-.env.docker
 
 # ---- IDE / Editors ----
 .vscode/
@@ -47,8 +46,6 @@ coverage/
 # ---- Prisma ----
 prisma/migrations/**/migration_lock.toml
 
-# ---- Docker ----
-docker-compose.override.yml
 backend/uploads/
 
 # ---- Misc ----

@@ -1,6 +1,7 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { penaltiesApi } from '@/lib/endpoints';
+import { queryKeys } from '@/lib/query-keys';
 import type { Penalty, HouseMember } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
@@ -11,33 +12,32 @@ interface Props { houseId: string; members: HouseMember[]; isAdmin: boolean; }
 
 export default function PenaltiesSection({ houseId, members, isAdmin }: Props) {
   const { user } = useAuth();
-  const [penalties, setPenalties] = useState<Penalty[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const load = useCallback(async () => {
-    try {
+  const { data: penalties = [], isLoading } = useQuery({
+    queryKey: queryKeys.penalties(houseId),
+    queryFn: async () => {
       const res = await penaltiesApi.list(houseId);
-      setPenalties(res.data.data ?? []);
-    } catch {
-      toast.error('Failed to load penalties');
-    } finally {
-      setLoading(false);
-    }
-  }, [houseId]);
+      return res.data.data ?? [];
+    },
+    enabled: !!houseId,
+  });
 
-  useEffect(() => { load(); }, [load]);
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.penalties(houseId) });
+  };
 
   const handleSettle = async (penaltyId: string) => {
     try {
       await penaltiesApi.settle(houseId, penaltyId);
       toast.success('Penalty settled!');
-      load();
+      refresh();
     } catch {
       toast.error('Failed to settle penalty');
     }
   };
 
-  if (loading) return <div className="h-24 rounded-xl bg-white/5 animate-pulse" />;
+  if (isLoading) return <div className="h-24 rounded-xl bg-white/5 animate-pulse" />;
 
   if (penalties.length === 0) {
     return (
@@ -51,7 +51,6 @@ export default function PenaltiesSection({ houseId, members, isAdmin }: Props) {
 
   return (
     <div className="bg-slate-900/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
-      {/* Table header */}
       <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 bg-black/20 border-b border-white/10 text-xs font-bold text-slate-400 uppercase tracking-wider">
         <div className="col-span-2">Member</div>
         <div className="col-span-4">Reason</div>

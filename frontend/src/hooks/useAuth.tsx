@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { authApi } from '@/lib/endpoints';
+import { scheduleProactiveRefresh } from '@/lib/api';
 import type { User } from '@/types';
 
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === 'true';
@@ -16,6 +17,7 @@ interface AuthCtx {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -30,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (SKIP_AUTH) { setUser(DEV_USER); setLoading(false); return; }
     const token = localStorage.getItem('accessToken');
     if (!token) { setLoading(false); return; }
+    scheduleProactiveRefresh(token);
     authApi.me()
       .then((r) => setUser(r.data.data))
       .catch(() => localStorage.clear())
@@ -39,11 +42,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const persist = (accessToken: string, refreshToken: string, u: User) => {
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
+    scheduleProactiveRefresh(accessToken);
     setUser(u);
   };
 
   const login = async (email: string, password: string) => {
     const { data } = await authApi.login(email, password);
+    persist(data.data.tokens.accessToken, data.data.tokens.refreshToken, data.data.user);
+  };
+
+  const loginWithGoogle = async (idToken: string) => {
+    const { data } = await authApi.googleLogin(idToken);
     persist(data.data.tokens.accessToken, data.data.tokens.refreshToken, data.data.user);
   };
 
@@ -59,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  return <Ctx.Provider value={{ user, loading, login, register, logout }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, loading, login, loginWithGoogle, register, logout }}>{children}</Ctx.Provider>;
 }
 
 export const useAuth = () => {

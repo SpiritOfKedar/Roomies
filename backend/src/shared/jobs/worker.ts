@@ -30,9 +30,11 @@ export function startTaskSweeperWorker() {
         `Task Sweeper [${job.id}]: Found ${expiredTasks.length} expired tasks. Applying penalties...`,
       );
 
-      // Apply all penalties and update status atomically inside a chunked transaction
-      await prisma.$transaction(async (tx: Parameters<typeof penaltyService.applyPenalty>[0]) => {
-        for (const task of expiredTasks) {
+      // One small transaction per task — avoids a single giant tx timing out on Neon
+      // and ensures a failure on one task never rolls back the others.
+      let processed = 0;
+      for (const task of expiredTasks) {
+        await prisma.$transaction(async (tx: Parameters<typeof penaltyService.applyPenalty>[0]) => {
           // Update task status to expired ONLY if it's still 'pending'
           const updateResult = await tx.task.updateMany({
             where: { id: task.id, status: 'pending' },
@@ -40,7 +42,7 @@ export function startTaskSweeperWorker() {
           });
 
           if (updateResult.count > 0) {
-            // Assign penalty points for expired task
+            processed++;
             await penaltyService.applyPenalty(
               tx,
               task.assignedTo,
@@ -50,13 +52,13 @@ export function startTaskSweeperWorker() {
               50.0, // $50 fine
             );
           }
-        }
-      });
+        });
+      }
 
       logger.info(
-        `Task Sweeper [${job.id}]: Successfully processed ${expiredTasks.length} expired tasks.`,
+        `Task Sweeper [${job.id}]: Successfully processed ${processed} of ${expiredTasks.length} expired tasks.`,
       );
-      return { processed: expiredTasks.length };
+      return { processed };
     },
     {
       // @ts-expect-error: BullMQ and IORedis type definition mismatch

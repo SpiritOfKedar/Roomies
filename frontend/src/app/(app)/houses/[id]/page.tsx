@@ -1,8 +1,10 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { housesApi } from '@/lib/endpoints';
-import type { House, HouseMember } from '@/types';
+import { useHouseDashboard } from '@/hooks/useHouseDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import TasksTab from './components/TasksTab';
 import ExpensesTab from './components/ExpensesTab';
@@ -23,50 +25,52 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'penalties', label: 'Penalties', icon: 'gavel' },
 ];
 
+function HouseHeaderSkeleton() {
+  return (
+    <div className="bg-white border border-[#E5E5E5] flex flex-col gap-6 rounded-xl p-8 shadow-sm md:flex-row md:items-start md:justify-between mb-8 animate-pulse">
+      <div className="flex flex-col gap-3 flex-1">
+        <div className="h-9 w-64 rounded-lg bg-neutral-200" />
+        <div className="h-5 w-32 rounded bg-neutral-100" />
+        <div className="h-10 w-40 rounded-lg bg-neutral-100 mt-2" />
+      </div>
+      <div className="h-24 w-56 rounded-2xl bg-neutral-100 shrink-0" />
+    </div>
+  );
+}
+
 export default function HousePage() {
   const { id } = useParams<{ id: string }>();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
-  const [house, setHouse] = useState<House | null>(null);
-  const [members, setMembers] = useState<HouseMember[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('tasks');
 
-  // Add Member Modal State
+  const { data: dashboard, isLoading, isError } = useHouseDashboard(id);
+
+  const house = dashboard?.house ?? null;
+  const members = house?.members ?? [];
+  const isAdmin = members.find((m) => m.userId === user?.id)?.role === 'admin';
+
   const [showAddMember, setShowAddMember] = useState(false);
   const [addMemberEmail, setAddMemberEmail] = useState('');
   const [addingMember, setAddingMember] = useState(false);
 
-  // Manage roommate state
   const [manageRoommateId, setManageRoommateId] = useState<string | null>(null);
   const [managingRoommate, setManagingRoommate] = useState(false);
 
-  // Manage house / leave
   const [showManageHouse, setShowManageHouse] = useState(false);
   const [leavingHouse, setLeavingHouse] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await housesApi.get(id);
-      const h: House = res.data.data;
-      setHouse(h);
-      setMembers(h.members ?? []);
-    } catch {
+  const refreshHouse = () => {
+    queryClient.invalidateQueries({ queryKey: ['house', id] });
+  };
+
+  useEffect(() => {
+    if (isError) {
       toast.error('House not found');
       router.push('/dashboard');
-    } finally {
-      setLoading(false);
     }
-  }, [id, router]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const isAdmin = members.find(m => m.userId === user?.id)?.role === 'admin';
-
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
-  };
+  }, [isError, router]);
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,10 +78,10 @@ export default function HousePage() {
     try {
       if (id && addMemberEmail) {
         await housesApi.addMemberByEmail(id as string, addMemberEmail);
-        toast.success(`Member added successfully`);
+        toast.success('Member added successfully');
         setShowAddMember(false);
         setAddMemberEmail('');
-        load();
+        refreshHouse();
       }
     } catch {
       toast.error('Failed to add member. Check the email and try again.');
@@ -111,7 +115,7 @@ export default function HousePage() {
       await housesApi.updateMember(id as string, manageRoommateId, 'inactive');
       toast.success('Member removed successfully');
       setManageRoommateId(null);
-      load();
+      refreshHouse();
     } catch {
       toast.error('Failed to remove member');
     } finally {
@@ -119,106 +123,137 @@ export default function HousePage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="w-8 h-8 border-4 border-black border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!house) return null;
-
   return (
     <div>
-      {/* House header panel */}
-      <div className="bg-white border border-[#E5E5E5] flex flex-col gap-6 rounded-xl p-8 shadow-sm md:flex-row md:items-start md:justify-between mb-8">
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <h1 className="text-3xl font-bold text-[#171717] tracking-tight">{house.name}</h1>
-                  {isAdmin && (
-                    <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
-                      Admin
-                    </span>
-                  )}
-                </div>
-                <p className="text-[#737373] font-light text-lg">{house.members?.length ?? 0} member{(house.members?.length ?? 0) !== 1 ? 's' : ''}</p>
-                {house.inviteCode && isAdmin && (
-                  <div className="flex items-center gap-3 mt-2">
-                    <span className="text-sm text-[#737373]">Invite code:</span>
-                    <code className="text-sm bg-neutral-100 border border-neutral-200 px-3 py-1.5 rounded-lg font-mono text-[#171717] select-all">{house.inviteCode}</code>
-                    <button
-                      onClick={() => { navigator.clipboard.writeText(house.inviteCode!); toast.success('Copied!'); }}
-                      className="text-sm text-blue-600 hover:text-blue-800 transition-colors font-semibold"
-                    >Copy</button>
+      {isLoading && !house ? (
+        <HouseHeaderSkeleton />
+      ) : house ? (
+        <div className="bg-white border border-[#E5E5E5] flex flex-col gap-6 rounded-xl p-8 shadow-sm md:flex-row md:items-start md:justify-between mb-8">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-4 flex-wrap">
+              <h1 className="text-3xl font-bold text-[#171717] tracking-tight">{house.name}</h1>
+              {isAdmin && (
+                <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
+                  Admin
+                </span>
+              )}
+            </div>
+            <p className="text-[#737373] font-light text-lg">
+              {members.length} member{members.length !== 1 ? 's' : ''}
+            </p>
+            {house.inviteCode && isAdmin && (
+              <div className="flex items-center gap-3 mt-2">
+                <span className="text-sm text-[#737373]">Invite code:</span>
+                <code className="text-sm bg-neutral-100 border border-neutral-200 px-3 py-1.5 rounded-lg font-mono text-[#171717] select-all">
+                  {house.inviteCode}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(house.inviteCode!);
+                    toast.success('Copied!');
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-800 transition-colors font-semibold"
+                >
+                  Copy
+                </button>
+              </div>
+            )}
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowManageHouse(true)}
+                className="flex items-center gap-2 bg-white border border-[#E5E5E5] hover:border-black text-[#171717] px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm text-sm"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                  settings
+                </span>
+                Manage House
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4 bg-neutral-50 p-5 rounded-2xl border border-neutral-200 shrink-0">
+            <p className="text-xs font-bold text-[#737373] uppercase tracking-widest">Roommates</p>
+            <div className="flex -space-x-4 overflow-hidden p-1">
+              {members.map((m) => (
+                <div
+                  key={m.userId}
+                  onClick={() => isAdmin && m.userId !== user?.id && setManageRoommateId(m.userId)}
+                  className={`group relative transition-all hover:scale-105 ${isAdmin && m.userId !== user?.id ? 'cursor-pointer hover:z-20' : 'hover:z-10'}`}
+                >
+                  <div className="size-14 rounded-full ring-2 ring-white bg-neutral-800 flex items-center justify-center text-lg font-bold text-white shadow-sm">
+                    {m.user?.name?.[0]?.toUpperCase() ?? '?'}
                   </div>
-                )}
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowManageHouse(true)}
-                    className="flex items-center gap-2 bg-white border border-[#E5E5E5] hover:border-black text-[#171717] px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm text-sm"
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>settings</span>
-                    Manage House
-                  </button>
+                  <span
+                    className={`absolute bottom-0 right-0 block size-4 rounded-full ring-2 ring-white ${
+                      m.status === 'active' ? 'bg-emerald-500' : 'bg-neutral-400'
+                    }`}
+                  />
                 </div>
-              </div>
-
-              {/* Roommates panel */}
-              <div className="flex flex-col gap-4 bg-neutral-50 p-5 rounded-2xl border border-neutral-200 shrink-0">
-                <p className="text-xs font-bold text-[#737373] uppercase tracking-widest">Roommates</p>
-                <div className="flex -space-x-4 overflow-hidden p-1">
-                  {members.map((m, i) => (
-                    <div key={m.userId} onClick={() => isAdmin && m.userId !== user?.id && setManageRoommateId(m.userId)} className={`group relative transition-all hover:scale-105 ${isAdmin && m.userId !== user?.id ? 'cursor-pointer hover:z-20' : 'hover:z-10'}`}>
-                      <div className="size-14 rounded-full ring-2 ring-white bg-neutral-800 flex items-center justify-center text-lg font-bold text-white shadow-sm">
-                        {m.user?.name?.[0]?.toUpperCase() ?? '?'}
-                      </div>
-                      <span
-                        className={`absolute bottom-0 right-0 block size-4 rounded-full ring-2 ring-white ${m.status === 'active' ? 'bg-emerald-500' : 'bg-neutral-400'
-                          }`}
-                      />
-                    </div>
-                  ))}
-                  {isAdmin && (
-                    <button onClick={() => setShowAddMember(true)} className="flex size-14 z-10 items-center justify-center rounded-full bg-white ring-2 ring-neutral-200 hover:ring-black transition-colors shadow-sm">
-                      <span className="material-symbols-outlined text-neutral-400" style={{ fontSize: '20px' }}>add</span>
-                    </button>
-                  )}
-                </div>
-              </div>
+              ))}
+              {isAdmin && (
+                <button
+                  onClick={() => setShowAddMember(true)}
+                  className="flex size-14 z-10 items-center justify-center rounded-full bg-white ring-2 ring-neutral-200 hover:ring-black transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-neutral-400" style={{ fontSize: '20px' }}>
+                    add
+                  </span>
+                </button>
+              )}
             </div>
+          </div>
+        </div>
+      ) : null}
 
-            {/* Tab navigation */}
-            <div className="w-full mb-8">
-              <nav className="flex gap-2 p-1.5 overflow-x-auto bg-neutral-100 rounded-xl border border-neutral-200">
-                {TABS.map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => setTab(t.id)}
-                    className={`group flex-1 inline-flex justify-center items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all whitespace-nowrap ${tab === t.id
-                      ? 'bg-white text-[#171717] shadow-sm ring-1 ring-black/5'
-                      : 'text-[#737373] hover:text-[#171717] hover:bg-white/50'
-                      }`}
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{t.icon}</span>
-                    {t.label}
-                  </button>
-                ))}
-              </nav>
-            </div>
+      <div className="w-full mb-8">
+        <nav className="flex gap-2 p-1.5 overflow-x-auto bg-neutral-100 rounded-xl border border-neutral-200">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`group flex-1 inline-flex justify-center items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all whitespace-nowrap ${
+                tab === t.id
+                  ? 'bg-white text-[#171717] shadow-sm ring-1 ring-black/5'
+                  : 'text-[#737373] hover:text-[#171717] hover:bg-white/50'
+              }`}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                {t.icon}
+              </span>
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
-            {/* Tab content */}
-            <div className="bg-white rounded-xl border border-[#E5E5E5] p-6 shadow-sm">
-              {tab === 'tasks' && <TasksTab house={house} members={members} isAdmin={isAdmin} />}
-              {tab === 'chat' && <ChatTab houseId={id as string} members={members} />}
-              {tab === 'expenses' && <ExpensesTab houseId={id as string} members={members} />}
-              {tab === 'leaderboard' && <LeaderboardTab houseId={id as string} />}
-              {tab === 'swaps' && <SwapsTab houseId={id as string} members={members} />}
-              {tab === 'penalties' && <PenaltiesSection houseId={id as string} members={members} isAdmin={isAdmin} />}
-            </div>
+      <div className="bg-white rounded-xl border border-[#E5E5E5] p-6 shadow-sm">
+        {house && tab === 'tasks' && (
+          <TasksTab
+            house={house}
+            members={members}
+            isAdmin={!!isAdmin}
+            prefetchedDashboard={dashboard}
+          />
+        )}
+        {house && tab === 'chat' && (
+          <ChatTab houseId={id as string} members={members} isActive={tab === 'chat'} />
+        )}
+        {house && tab === 'expenses' && <ExpensesTab houseId={id as string} members={members} />}
+        {house && tab === 'leaderboard' && <LeaderboardTab houseId={id as string} />}
+        {house && tab === 'swaps' && <SwapsTab houseId={id as string} members={members} />}
+        {house && tab === 'penalties' && (
+          <PenaltiesSection houseId={id as string} members={members} isAdmin={!!isAdmin} />
+        )}
+        {isLoading && !house && (
+          <div className="space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-16 animate-pulse rounded-xl bg-neutral-100" />
+            ))}
+          </div>
+        )}
+      </div>
 
-      {/* Add Member Modal */}
       {isAdmin && (
         <Modal open={showAddMember} onClose={() => setShowAddMember(false)} title="Add Roommate">
           <form onSubmit={handleAddMember} className="flex flex-col gap-4">
@@ -229,13 +264,23 @@ export default function HousePage() {
                 type="email"
                 placeholder="john.doe@example.com"
                 value={addMemberEmail}
-                onChange={e => setAddMemberEmail(e.target.value)}
+                onChange={(e) => setAddMemberEmail(e.target.value)}
                 required
               />
             </div>
             <div className="flex gap-3 mt-4">
-              <button type="button" className="flex-1 border border-[#E5E5E5] text-[#171717] font-semibold py-2.5 rounded-lg hover:bg-neutral-50 transition-all" onClick={() => setShowAddMember(false)}>Cancel</button>
-              <button type="submit" className="flex-1 bg-black text-white font-semibold py-2.5 rounded-lg hover:bg-neutral-800 transition-all" disabled={addingMember}>
+              <button
+                type="button"
+                className="flex-1 border border-[#E5E5E5] text-[#171717] font-semibold py-2.5 rounded-lg hover:bg-neutral-50 transition-all"
+                onClick={() => setShowAddMember(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 bg-black text-white font-semibold py-2.5 rounded-lg hover:bg-neutral-800 transition-all"
+                disabled={addingMember}
+              >
                 {addingMember ? 'Adding…' : 'Add Member'}
               </button>
             </div>
@@ -243,17 +288,21 @@ export default function HousePage() {
         </Modal>
       )}
 
-      {/* Manage House Modal */}
       <Modal open={showManageHouse} onClose={() => setShowManageHouse(false)} title="Manage House">
         <div className="flex flex-col gap-5">
-          {house.inviteCode && isAdmin && (
+          {house?.inviteCode && isAdmin && (
             <div>
               <p className="text-sm font-semibold text-[#171717]">Invite code</p>
               <div className="mt-2 flex items-center gap-2">
-                <code className="flex-1 rounded-lg bg-neutral-100 px-3 py-2 font-mono text-sm">{house.inviteCode}</code>
+                <code className="flex-1 rounded-lg bg-neutral-100 px-3 py-2 font-mono text-sm">
+                  {house.inviteCode}
+                </code>
                 <button
                   type="button"
-                  onClick={() => { navigator.clipboard.writeText(house.inviteCode!); toast.success('Copied!'); }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(house.inviteCode!);
+                    toast.success('Copied!');
+                  }}
                   className="rounded-lg border border-neutral-200 px-3 py-2 text-sm font-semibold hover:bg-neutral-50"
                 >
                   Copy
@@ -263,7 +312,8 @@ export default function HousePage() {
           )}
           {isAdmin && (
             <p className="text-sm text-[#737373]">
-              Tap a roommate avatar above to remove them from the house. Pending tasks assigned to removed members are expired automatically.
+              Tap a roommate avatar above to remove them from the house. Pending tasks assigned to removed
+              members are expired automatically.
             </p>
           )}
           <div className="border-t border-neutral-100 pt-4">
@@ -284,14 +334,24 @@ export default function HousePage() {
         </div>
       </Modal>
 
-      {/* Manage/Remove Roommate Modal */}
       {isAdmin && (
         <Modal open={!!manageRoommateId} onClose={() => setManageRoommateId(null)} title="Manage Roommate">
           <div className="flex flex-col gap-4">
             <p className="text-[#737373]">Do you want to completely remove this member from the house?</p>
             <div className="flex gap-3 mt-4">
-              <button type="button" className="flex-1 border border-[#E5E5E5] text-[#171717] font-semibold py-2.5 rounded-lg hover:bg-neutral-50 transition-all" onClick={() => setManageRoommateId(null)}>Cancel</button>
-              <button type="button" className="flex-1 bg-red-600 text-white font-semibold py-2.5 rounded-lg hover:bg-red-700 transition-all" onClick={handleRemoveMember} disabled={managingRoommate}>
+              <button
+                type="button"
+                className="flex-1 border border-[#E5E5E5] text-[#171717] font-semibold py-2.5 rounded-lg hover:bg-neutral-50 transition-all"
+                onClick={() => setManageRoommateId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="flex-1 bg-red-600 text-white font-semibold py-2.5 rounded-lg hover:bg-red-700 transition-all"
+                onClick={handleRemoveMember}
+                disabled={managingRoommate}
+              >
                 {managingRoommate ? 'Removing…' : 'Remove Member'}
               </button>
             </div>

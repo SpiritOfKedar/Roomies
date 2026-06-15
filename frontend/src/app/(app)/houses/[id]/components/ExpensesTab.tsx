@@ -1,6 +1,8 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { expensesApi } from '@/lib/endpoints';
+import { queryKeys } from '@/lib/query-keys';
 import type { Expense, HouseMember } from '@/types';
 import Modal from '@/components/Modal';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,13 +17,10 @@ const EXPENSE_ICONS = ['wifi', 'shopping_cart', 'water_drop', 'cleaning_services
 
 export default function ExpensesTab({ houseId, members }: Props) {
   const { user } = useAuth();
-  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
 
-  // Add expense modal
   const [showAdd, setShowAdd] = useState(false);
   const [addTitle, setAddTitle] = useState('');
   const [addAmount, setAddAmount] = useState('');
@@ -30,20 +29,21 @@ export default function ExpensesTab({ houseId, members }: Props) {
 
   const limit = 10;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data, isLoading } = useQuery({
+    queryKey: queryKeys.expenses(houseId, page),
+    queryFn: async () => {
       const res = await expensesApi.list(houseId, page, limit);
-      setExpenses(res.data.data?.items ?? []);
-      setTotal(res.data.data?.total ?? 0);
-    } catch {
-      toast.error('Failed to load expenses');
-    } finally {
-      setLoading(false);
-    }
-  }, [houseId, page]);
+      return res.data.data;
+    },
+    enabled: !!houseId,
+  });
 
-  useEffect(() => { load(); }, [load]);
+  const expenses = data?.items ?? [];
+  const total = data?.total ?? 0;
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['house', houseId, 'expenses'] });
+  };
 
   const toggleRow = (id: string) =>
     setExpanded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
@@ -60,7 +60,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
       toast.success('Expense added!');
       setShowAdd(false);
       setAddTitle(''); setAddAmount(''); setAddReceipt(null);
-      load();
+      refresh();
     } catch {
       toast.error('Failed to add expense');
     } finally {
@@ -72,7 +72,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
     try {
       await expensesApi.settleSplit(houseId, expenseId, splitId);
       toast.success('Split settled!');
-      load();
+      refresh();
     } catch {
       toast.error('Failed to settle');
     }
@@ -142,7 +142,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
       </div>
 
       {/* Expense table */}
-      {loading ? (
+      {isLoading ? (
         <div className="space-y-2">
           {[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />)}
         </div>

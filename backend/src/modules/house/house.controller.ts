@@ -9,7 +9,9 @@
 
 import { Request, Response } from 'express';
 import { sendSuccess } from '../../shared/utils/api-response';
+import { NotFoundError } from '../../shared/utils/app-error';
 import * as houseService from './house.service';
+import { getHouseDashboard as loadHouseDashboard } from './house.dashboard.service';
 import type {
   CreateHouseInput,
   HouseIdParams,
@@ -127,4 +129,22 @@ export async function leaveHouse(req: Request, res: Response): Promise<void> {
   );
 
   sendSuccess(res, member);
+}
+
+/**
+ * GET /api/houses/:id/dashboard
+ * Returns house, tasks, and vote statuses in one response.
+ */
+export async function getHouseDashboard(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id: houseId } = req.params as unknown as HouseIdParams;
+  const statusFilter = (req.query.statusFilter as 'active' | 'all' | undefined) ?? 'active';
+
+  const data = await loadHouseDashboard(userId, houseId, statusFilter);
+
+  if (!data) {
+    throw NotFoundError('House');
+  }
+
+  sendSuccess(res, data);
 }

@@ -18,7 +18,9 @@ import { prisma } from '../../shared/db/prisma';
 export interface CreateUserData {
   name: string;
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
+  googleId?: string;
+  avatarUrl?: string;
 }
 
 /** Safe user projection (excludes password hash) */
@@ -27,6 +29,7 @@ export interface SafeUser {
   name: string;
   email: string;
   status: string;
+  avatarUrl: string | null;
   createdAt: Date;
 }
 
@@ -36,6 +39,7 @@ const SAFE_USER_SELECT = {
   name: true,
   email: true,
   status: true,
+  avatarUrl: true,
   createdAt: true,
 } as const;
 
@@ -53,7 +57,9 @@ export async function createUser(data: CreateUserData): Promise<SafeUser> {
     data: {
       name: data.name,
       email: data.email,
-      passwordHash: data.passwordHash,
+      passwordHash: data.passwordHash ?? null,
+      googleId: data.googleId ?? null,
+      avatarUrl: data.avatarUrl ?? null,
     },
     select: SAFE_USER_SELECT,
   });
@@ -69,6 +75,34 @@ export async function createUser(data: CreateUserData): Promise<SafeUser> {
 export async function findUserByEmail(email: string) {
   return prisma.user.findUnique({
     where: { email },
+  });
+}
+
+/**
+ * Find a user by Google account ID.
+ */
+export async function findUserByGoogleId(googleId: string): Promise<SafeUser | null> {
+  return prisma.user.findUnique({
+    where: { googleId },
+    select: SAFE_USER_SELECT,
+  });
+}
+
+/**
+ * Link a Google account to an existing user.
+ */
+export async function linkGoogleAccount(
+  userId: string,
+  googleId: string,
+  avatarUrl?: string,
+): Promise<SafeUser> {
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      googleId,
+      ...(avatarUrl ? { avatarUrl } : {}),
+    },
+    select: SAFE_USER_SELECT,
   });
 }
 
@@ -98,4 +132,21 @@ export async function emailExists(email: string): Promise<boolean> {
     where: { email },
   });
   return count > 0;
+}
+
+/**
+ * Update a user's password hash.
+ */
+export async function updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+  });
+}
+
+/**
+ * Revoke all refresh tokens for a user (e.g. after password reset).
+ */
+export async function revokeAllRefreshTokens(userId: string): Promise<void> {
+  await prisma.refreshToken.deleteMany({ where: { userId } });
 }

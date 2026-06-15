@@ -75,11 +75,18 @@ export async function submitTask(req: Request, res: Response): Promise<void> {
 export async function getTasksByHouse(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
   const { id: houseId } = req.params as unknown as HouseIdParams;
-  const { limit, offset } = req.query as unknown as PaginationQuery;
+  const { limit, offset, statusFilter } = req.query as unknown as PaginationQuery;
 
-  const result = await tasksService.getTasksByHouse(userId, houseId, limit, offset);
+  const result = await tasksService.getTasksByHouse(userId, houseId, limit, offset, statusFilter);
 
-  sendPaginated(res, result.tasks, result.total, result.limit, result.offset);
+  sendSuccess(res, {
+    items: result.tasks,
+    total: result.total,
+    limit: result.limit,
+    offset: result.offset,
+    hasMore: result.offset + result.limit < result.total,
+    completedCount: result.completedCount,
+  });
 }
 
 /**

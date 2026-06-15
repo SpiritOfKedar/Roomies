@@ -5,13 +5,16 @@ import { logger } from '../utils/logger';
 
 /**
  * BullMQ requires an underlying ioredis connection.
+ * Upstash provides a TLS URL (rediss://); host/port is a local-dev fallback.
  */
-export const redisConnection = new Redis({
-  host: env.REDIS_HOST,
-  port: env.REDIS_PORT,
-  password: env.REDIS_PASSWORD || undefined,
-  maxRetriesPerRequest: null, // Required by BullMQ
-});
+export const redisConnection = env.REDIS_URL
+  ? new Redis(env.REDIS_URL, { maxRetriesPerRequest: null })
+  : new Redis({
+      host: env.REDIS_HOST,
+      port: env.REDIS_PORT,
+      password: env.REDIS_PASSWORD || undefined,
+      maxRetriesPerRequest: null,
+    });
 
 /**
  * Instantiate the specific queue for orchestrating task sweeps.

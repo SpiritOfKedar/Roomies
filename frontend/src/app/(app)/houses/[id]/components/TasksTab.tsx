@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { tasksApi } from '@/lib/endpoints';
-import type { Task, HouseMember, House } from '@/types';
+import { useHouseDashboard } from '@/hooks/useHouseDashboard';
+import type { Task, HouseMember, House, HouseDashboard } from '@/types';
 import Modal from '@/components/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
@@ -16,6 +18,7 @@ interface Props {
   house: House;
   members: HouseMember[];
   isAdmin: boolean;
+  prefetchedDashboard?: HouseDashboard;
 }
 
 const TASK_ICON_STYLES = [
@@ -44,14 +47,11 @@ function statusBadgeClass(status: string) {
   }
 }
 
-export default function TasksTab({ house, members, isAdmin }: Props) {
+export default function TasksTab({ house, members, isAdmin, prefetchedDashboard }: Props) {
   const houseId = house.id;
   const { user } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [voteStatuses, setVoteStatuses] = useState<Record<string, TaskVoteStatus>>({});
 
   const [showAssign, setShowAssign] = useState(false);
   const [assignTitle, setAssignTitle] = useState('');
@@ -81,8 +81,22 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [showCompleted, setShowCompleted] = useState(false);
+
   const limit = 10;
-  const fetchLimit = 100;
+  const statusFilter = showCompleted ? 'all' : 'active';
+
+  const { data, isLoading } = useHouseDashboard(houseId, statusFilter, {
+    initialData: statusFilter === 'active' ? prefetchedDashboard : undefined,
+  });
+
+  const tasks = data?.tasks.items ?? [];
+  const voteStatuses = data?.voteStatuses ?? {};
+  const completedCount = data?.tasks.completedCount ?? 0;
+
+  const refreshTasks = () => {
+    queryClient.invalidateQueries({ queryKey: ['house', houseId, 'dashboard'] });
+  };
 
   const isAdminEditable = (status: string) =>
     isAdmin && ['pending', 'submitted', 'disputed'].includes(status);
@@ -91,58 +105,6 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
     () => tasks.filter((t) => t.assignedTo === user?.id && t.status === 'disputed'),
     [tasks, user?.id],
   );
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await tasksApi.list(houseId, 1, fetchLimit);
-      const items = res.data.data?.items ?? [];
-      setTasks(items);
-      setTotal(items.length);
-
-      const submitted = items.filter((t) => t.status === 'submitted');
-      const statuses: Record<string, TaskVoteStatus> = {};
-      let needsListRefresh = false;
-      await Promise.all(
-        submitted.map(async (t) => {
-          try {
-            const vs = await tasksApi.getVotes(t.id);
-            statuses[t.id] = vs.data.data;
-            if (vs.data.data.status !== t.status) {
-              needsListRefresh = true;
-            }
-          } catch {
-            /* ignore */
-          }
-        }),
-      );
-      setVoteStatuses(statuses);
-
-      if (needsListRefresh) {
-        const refresh = await tasksApi.list(houseId, 1, fetchLimit);
-        const refreshed = refresh.data.data?.items ?? [];
-        setTasks(refreshed);
-        setTotal(refreshed.length);
-        const stillSubmitted = refreshed.filter((t) => t.status === 'submitted');
-        const refreshedStatuses: Record<string, TaskVoteStatus> = {};
-        await Promise.all(
-          stillSubmitted.map(async (t) => {
-            try {
-              const vs = await tasksApi.getVotes(t.id);
-              refreshedStatuses[t.id] = vs.data.data;
-            } catch {
-              /* ignore */
-            }
-          }),
-        );
-        setVoteStatuses(refreshedStatuses);
-      }
-    } catch {
-      toast.error('Failed to load tasks');
-    } finally {
-      setLoading(false);
-    }
-  }, [houseId]);
 
   const filteredTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -166,11 +128,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  }, [searchQuery, statusFilter]);
 
   useEffect(() => {
     if (viewTask) {
@@ -201,7 +159,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       setAssignWeight(1);
       setAssignIsRecurring(false);
       setAssignCronSchedule('');
-      load();
+      refreshTasks();
     } catch {
       toast.error('Failed to assign task');
     } finally {
@@ -236,7 +194,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       });
       toast.success('Task updated');
       setEditTask(null);
-      load();
+      refreshTasks();
     } catch {
       toast.error('Failed to update task');
     } finally {
@@ -253,7 +211,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       toast.success('Task deleted');
       setEditTask(null);
       setViewTask(null);
-      load();
+      refreshTasks();
     } catch {
       toast.error('Failed to delete task');
     } finally {
@@ -274,7 +232,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
       setSubmitTask(null);
       setProofFile(null);
       setProofNote('');
-      load();
+      refreshTasks();
     } catch {
       toast.error('Failed to submit proof');
     } finally {
@@ -324,11 +282,29 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sm text-neutral-500">
             {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}
             {searchQuery.trim() ? ` matching "${searchQuery.trim()}"` : ''}
           </span>
+          {!showCompleted && completedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowCompleted(true)}
+              className="rounded-md bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-200"
+            >
+              Show {completedCount} completed
+            </button>
+          )}
+          {showCompleted && (
+            <button
+              type="button"
+              onClick={() => setShowCompleted(false)}
+              className="rounded-md bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 transition-colors hover:bg-green-100"
+            >
+              Hide completed
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={() => setShowAssign(true)}
@@ -343,7 +319,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
         </div>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="h-16 animate-pulse rounded-xl bg-neutral-100" />
@@ -385,13 +361,17 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                   const hasVoted = !!vs?.userVote;
                   const taskStyle = TASK_ICON_STYLES[idx % TASK_ICON_STYLES.length];
                   const isOverdue = task.status === 'expired' || task.status === 'rejected';
+                  const isDone = task.status === 'completed';
+                  const assigneeName = isAssignee
+                    ? 'You'
+                    : members.find((m) => m.userId === task.assignedTo)?.user?.name ?? '—';
 
                   return (
                     <tr
                       key={task.id}
                       className={`group cursor-pointer transition-all duration-200 hover:bg-neutral-50 ${
                         isOverdue ? 'bg-red-50 hover:bg-red-100' : ''
-                      }`}
+                      } ${isDone ? 'opacity-60' : ''}`}
                       onClick={(e) => {
                         if (!(e.target as HTMLElement).closest('button')) {
                           setViewTask(task);
@@ -414,6 +394,12 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                                 {vs.votesCast}/{vs.eligibleVoters} votes · need {vs.tallies.required}
                               </p>
                             )}
+                            {isDone && (
+                              <p className="mt-0.5 text-xs text-green-600">
+                                Completed by {assigneeName}
+                                {task.deadline ? ` · ${format(new Date(task.deadline), 'MMM d')}` : ''}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -432,9 +418,7 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
                                 : 'font-medium text-neutral-600'
                             }
                           >
-                            {isAssignee
-                              ? 'You'
-                              : members.find((m) => m.userId === task.assignedTo)?.user?.name ?? '—'}
+                            {assigneeName}
                           </span>
                         </div>
                       </td>
@@ -800,14 +784,14 @@ export default function TasksTab({ house, members, isAdmin }: Props) {
         task={voteTask}
         houseId={houseId}
         onClose={() => setVoteTask(null)}
-        onVoted={load}
+        onVoted={refreshTasks}
       />
 
       <ResubmitModal
         task={resubmitTask}
         houseId={houseId}
         onClose={() => setResubmitTask(null)}
-        onSubmitted={load}
+        onSubmitted={refreshTasks}
       />
 
       <TaskDetailsModal

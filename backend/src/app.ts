@@ -23,6 +23,8 @@ import { initStorage } from './shared/utils/storage';
 import { globalErrorHandler } from './shared/middleware/error-handler';
 import { apiLimiter } from './shared/middleware/rate-limiter';
 import { disconnectPrisma } from './shared/db/prisma';
+import { requestTiming } from './shared/middleware/request-timing';
+import { disconnectCacheRedis } from './shared/cache/redis-cache';
 
 // ---- Module Route Imports ----
 import authRoutes from './modules/auth/auth.routes';
@@ -55,6 +57,7 @@ app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use(requestTiming);
 
 // ---- Static uploads ----
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR)));
@@ -117,6 +120,7 @@ if (env.NODE_ENV !== 'test') {
       await closeWorker();
       await closeRecurringTasksQueue();
       await closeRecurringTasksWorker();
+      await disconnectCacheRedis();
       await disconnectPrisma();
       logger.info('Graceful shutdown complete.');
       process.exit(0);

@@ -260,6 +260,8 @@ export interface ChoreRotationStat {
 
 /**
  * Per-chore rotation stats for fair assignment.
+ * Uses batched groupBy queries to avoid N+1 round trips inside interactive transactions
+ * (Neon pooler will close long-running transactions).
  */
 export async function getChoreRotationStats(
   tx: TxClient,
@@ -270,62 +272,67 @@ export async function getChoreRotationStats(
   const openStatuses = ['pending', 'submitted', 'disputed'] as const;
   const since90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   const now = Date.now();
+  const memberIds = members.map((m) => m.userId);
 
-  const stats: ChoreRotationStat[] = [];
+  if (memberIds.length === 0) {
+    return [];
+  }
 
-  for (let index = 0; index < members.length; index++) {
-    const member = members[index];
+  const memberFilter = { houseId, assignedTo: { in: memberIds } };
 
-    const openTasks = await tx.task.count({
-      where: {
-        houseId,
-        assignedTo: member.userId,
-        status: { in: [...openStatuses] },
-      },
-    });
+  const [openCounts, openSameTitleCounts, completedSameTitleCounts, lastAssignments] =
+    await Promise.all([
+      tx.task.groupBy({
+        by: ['assignedTo'],
+        where: { ...memberFilter, status: { in: [...openStatuses] } },
+        _count: { id: true },
+      }),
+      tx.task.groupBy({
+        by: ['assignedTo'],
+        where: { ...memberFilter, title: choreTitle, status: { in: [...openStatuses] } },
+        _count: { id: true },
+      }),
+      tx.task.groupBy({
+        by: ['assignedTo'],
+        where: {
+          ...memberFilter,
+          title: choreTitle,
+          status: 'completed',
+          createdAt: { gte: since90d },
+        },
+        _count: { id: true },
+      }),
+      tx.task.groupBy({
+        by: ['assignedTo'],
+        where: { ...memberFilter, title: choreTitle },
+        _max: { createdAt: true },
+      }),
+    ]);
 
-    const openTasksSameTitle = await tx.task.count({
-      where: {
-        houseId,
-        assignedTo: member.userId,
-        title: choreTitle,
-        status: { in: [...openStatuses] },
-      },
-    });
+  const openMap = new Map(openCounts.map((r) => [r.assignedTo, r._count.id]));
+  const openSameMap = new Map(openSameTitleCounts.map((r) => [r.assignedTo, r._count.id]));
+  const completedMap = new Map(
+    completedSameTitleCounts.map((r) => [r.assignedTo, r._count.id]),
+  );
+  const lastMap = new Map(lastAssignments.map((r) => [r.assignedTo, r._max.createdAt]));
 
-    const completedCountSameTitle = await tx.task.count({
-      where: {
-        houseId,
-        assignedTo: member.userId,
-        title: choreTitle,
-        status: 'completed',
-        createdAt: { gte: since90d },
-      },
-    });
-
-    const lastSameTitle = await tx.task.findFirst({
-      where: { houseId, assignedTo: member.userId, title: choreTitle },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    });
-
-    const daysSinceLastAssignmentSameTitle = lastSameTitle
-      ? (now - lastSameTitle.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+  return members.map((member, index) => {
+    const lastCreated = lastMap.get(member.userId);
+    const daysSinceLastAssignmentSameTitle = lastCreated
+      ? (now - lastCreated.getTime()) / (1000 * 60 * 60 * 24)
       : 999;
 
-    stats.push({
+    return {
       userId: member.userId,
       name: member.user.name,
       joinedAt: member.joinedAt,
       index,
-      openTasks,
-      openTasksSameTitle,
-      completedCountSameTitle,
+      openTasks: openMap.get(member.userId) ?? 0,
+      openTasksSameTitle: openSameMap.get(member.userId) ?? 0,
+      completedCountSameTitle: completedMap.get(member.userId) ?? 0,
       daysSinceLastAssignmentSameTitle,
-    });
-  }
-
-  return stats;
+    };
+  });
 }
 
 /**
@@ -336,57 +343,72 @@ export async function getChoreRotationStats(
  * @param offset - Number of tasks to skip
  * @returns Object with tasks array and total count
  */
+const ACTIVE_STATUSES = ['pending', 'submitted', 'disputed'];
+const DONE_STATUSES = ['completed', 'expired', 'rejected'];
+
+const TASK_LIST_SELECT = {
+  id: true,
+  houseId: true,
+  assignedTo: true,
+  title: true,
+  status: true,
+  deadline: true,
+  createdAt: true,
+  imageUrl: true,
+  rewardPoints: true,
+  penaltyFine: true,
+  isRecurring: true,
+  cronSchedule: true,
+  resubmissionCount: true,
+  currentSubmissionId: true,
+  assignee: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+  currentSubmission: {
+    select: {
+      id: true,
+      attemptNumber: true,
+      imageUrl: true,
+      clarification: true,
+      createdAt: true,
+    },
+  },
+} as const;
+
 export async function getTasksByHouse(
   houseId: string,
   limit: number,
   offset: number,
+  statusFilter: 'active' | 'all' = 'active',
 ): Promise<{
   tasks: ReturnType<typeof findTaskById> extends Promise<infer T> ? NonNullable<T>[] : never;
   total: number;
+  completedCount: number;
 }> {
-  const [tasks, total] = await Promise.all([
+  const where =
+    statusFilter === 'active'
+      ? { houseId, status: { in: ACTIVE_STATUSES } }
+      : { houseId };
+
+  const [tasks, total, completedCount] = await Promise.all([
     prisma.task.findMany({
-      where: { houseId },
+      where,
       orderBy: { createdAt: 'desc' },
       skip: offset,
       take: limit,
-      select: {
-        id: true,
-        houseId: true,
-        assignedTo: true,
-        title: true,
-        status: true,
-        deadline: true,
-        createdAt: true,
-        imageUrl: true,
-        rewardPoints: true,
-        penaltyFine: true,
-        isRecurring: true,
-        cronSchedule: true,
-        resubmissionCount: true,
-        currentSubmissionId: true,
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        currentSubmission: {
-          select: {
-            id: true,
-            attemptNumber: true,
-            imageUrl: true,
-            clarification: true,
-            createdAt: true,
-          },
-        },
-      },
+      select: TASK_LIST_SELECT,
     }),
-    prisma.task.count({ where: { houseId } }),
+    prisma.task.count({ where }),
+    statusFilter === 'active'
+      ? prisma.task.count({ where: { houseId, status: { in: DONE_STATUSES } } })
+      : Promise.resolve(0),
   ]);
 
-  return { tasks, total };
+  return { tasks, total, completedCount };
 }
 // ---- Admin Mutation ----
 

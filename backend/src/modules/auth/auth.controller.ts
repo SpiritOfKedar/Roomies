@@ -13,7 +13,16 @@
 import { Request, Response } from 'express';
 import { sendSuccess } from '../../shared/utils/api-response';
 import * as authService from './auth.service';
-import type { RegisterInput, LoginInput, RefreshInput } from './auth.schema';
+import type { RegisterInput, LoginInput, RefreshInput, GoogleIdTokenInput } from './auth.schema';
+import type {
+  RecoveryEmailInput,
+  VerifyQuestionsInput,
+  VerifyTokenInput,
+  ResetPasswordInput,
+} from './recovery.schema';
+import * as recoveryService from './recovery.service';
+import { getGoogleAuthUrl } from '../../shared/utils/google-oauth';
+import { env } from '../../shared/utils/env';
 
 /**
  * POST /auth/register
@@ -71,4 +80,89 @@ export async function logout(req: Request, res: Response): Promise<void> {
   await authService.logout(refreshToken);
 
   sendSuccess(res, { message: 'Logged out successfully' });
+}
+
+/**
+ * POST /auth/google
+ * Verifies a Google ID token from the frontend GIS button.
+ */
+export async function googleLogin(req: Request, res: Response): Promise<void> {
+  const { idToken } = req.body as GoogleIdTokenInput;
+
+  const result = await authService.googleLoginWithIdToken(idToken, {
+    userAgent: req.headers['user-agent'],
+    ipAddress: req.ip,
+  });
+
+  sendSuccess(res, result);
+}
+
+/**
+ * GET /auth/google
+ * Redirects the browser to Google's OAuth consent screen.
+ */
+export async function googleRedirect(_req: Request, res: Response): Promise<void> {
+  const url = getGoogleAuthUrl();
+  res.redirect(url);
+}
+
+/**
+ * GET /auth/google/callback
+ * Handles Google's redirect, issues JWTs, and sends the user back to the frontend.
+ */
+export async function googleCallback(req: Request, res: Response): Promise<void> {
+  const code = req.query.code as string | undefined;
+  const oauthError = req.query.error as string | undefined;
+
+  if (oauthError || !code) {
+    const message = oauthError ?? 'missing_code';
+    res.redirect(`${env.CORS_ORIGIN}/auth/google/callback?error=${encodeURIComponent(message)}`);
+    return;
+  }
+
+  try {
+    const result = await authService.googleLoginWithCode(code, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+
+    const params = new URLSearchParams({
+      accessToken: result.tokens.accessToken,
+      refreshToken: result.tokens.refreshToken,
+    });
+    res.redirect(`${env.CORS_ORIGIN}/auth/google/callback?${params.toString()}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'google_auth_failed';
+    res.redirect(`${env.CORS_ORIGIN}/auth/google/callback?error=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function recoveryOptions(req: Request, res: Response): Promise<void> {
+  const input = req.body as RecoveryEmailInput;
+  const options = await recoveryService.getRecoveryOptions(input);
+  sendSuccess(res, options);
+}
+
+export async function recoveryEmail(req: Request, res: Response): Promise<void> {
+  const input = req.body as RecoveryEmailInput;
+  await recoveryService.sendRecoveryEmail(input);
+  sendSuccess(res, { message: 'If an account exists, a reset link has been sent.' });
+}
+
+export async function recoveryVerifyQuestions(req: Request, res: Response): Promise<void> {
+  const input = req.body as VerifyQuestionsInput;
+  const result = await recoveryService.verifySecurityQuestions(input);
+  sendSuccess(res, result);
+}
+
+export async function recoveryVerifyToken(req: Request, res: Response): Promise<void> {
+  const input = req.query as unknown as VerifyTokenInput;
+  const result = await recoveryService.verifyRecoveryToken(input);
+  sendSuccess(res, result);
+}
+
+export async function recoveryResetPassword(req: Request, res: Response): Promise<void> {
+  const input = req.body as ResetPasswordInput;
+  await recoveryService.resetPassword(input);
+  sendSuccess(res, { message: 'Password updated successfully' });
 }

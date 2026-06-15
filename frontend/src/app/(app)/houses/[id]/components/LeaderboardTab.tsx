@@ -1,9 +1,8 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { leaderboardApi } from '@/lib/endpoints';
-import type { LeaderboardEntry } from '@/types';
+import { queryKeys } from '@/lib/query-keys';
 import { useAuth } from '@/hooks/useAuth';
-import toast from 'react-hot-toast';
 
 interface Props { houseId: string; }
 
@@ -15,23 +14,17 @@ const MEDAL_ICONS = [
 
 export default function LeaderboardTab({ houseId }: Props) {
   const { user } = useAuth();
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    try {
+  const { data: entries = [], isLoading } = useQuery({
+    queryKey: queryKeys.leaderboard(houseId),
+    queryFn: async () => {
       const res = await leaderboardApi.get(houseId);
-      setEntries(res.data.data ?? []);
-    } catch {
-      toast.error('Failed to load leaderboard');
-    } finally {
-      setLoading(false);
-    }
-  }, [houseId]);
+      return res.data.data ?? [];
+    },
+    enabled: !!houseId,
+  });
 
-  useEffect(() => { load(); }, [load]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-2">
         {[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />)}

@@ -18,8 +18,14 @@ import { Router } from 'express';
 import { validate } from '../../shared/middleware/validate';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import * as authController from './auth.controller';
-import { registerSchema, loginSchema, refreshSchema } from './auth.schema';
-import { authLimiter } from '../../shared/middleware/rate-limiter';
+import { registerSchema, loginSchema, refreshSchema, googleIdTokenSchema } from './auth.schema';
+import {
+  recoveryEmailSchema,
+  verifyQuestionsSchema,
+  verifyTokenSchema,
+  resetPasswordSchema,
+} from './recovery.schema';
+import { authLimiter, recoveryLimiter } from '../../shared/middleware/rate-limiter';
 
 const router = Router();
 
@@ -56,5 +62,63 @@ router.post('/refresh', validate({ body: refreshSchema }), asyncHandler(authCont
  * Public — revokes the provided refresh token.
  */
 router.post('/logout', validate({ body: refreshSchema }), asyncHandler(authController.logout));
+
+/**
+ * POST /api/auth/google
+ * Public — verifies a Google ID token from the frontend.
+ */
+router.post(
+  '/google',
+  authLimiter,
+  validate({ body: googleIdTokenSchema }),
+  asyncHandler(authController.googleLogin),
+);
+
+/**
+ * GET /api/auth/google
+ * Public — starts the server-side Google OAuth redirect flow.
+ */
+router.get('/google', asyncHandler(authController.googleRedirect));
+
+/**
+ * GET /api/auth/google/callback
+ * Public — Google OAuth redirect target; forwards tokens to the frontend.
+ */
+router.get('/google/callback', asyncHandler(authController.googleCallback));
+
+router.post(
+  '/recovery/options',
+  recoveryLimiter,
+  validate({ body: recoveryEmailSchema }),
+  asyncHandler(authController.recoveryOptions),
+);
+
+router.post(
+  '/recovery/email',
+  recoveryLimiter,
+  validate({ body: recoveryEmailSchema }),
+  asyncHandler(authController.recoveryEmail),
+);
+
+router.post(
+  '/recovery/verify-questions',
+  recoveryLimiter,
+  validate({ body: verifyQuestionsSchema }),
+  asyncHandler(authController.recoveryVerifyQuestions),
+);
+
+router.get(
+  '/recovery/verify-token',
+  recoveryLimiter,
+  validate({ query: verifyTokenSchema }),
+  asyncHandler(authController.recoveryVerifyToken),
+);
+
+router.post(
+  '/recovery/reset-password',
+  recoveryLimiter,
+  validate({ body: resetPasswordSchema }),
+  asyncHandler(authController.recoveryResetPassword),
+);
 
 export default router;

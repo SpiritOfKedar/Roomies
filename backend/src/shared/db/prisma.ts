@@ -22,10 +22,24 @@ const globalForPrisma = globalThis as unknown as {
 /**
  * Singleton PrismaClient instance.
  * Logs queries in development for debugging.
+ *
+ * In dev, drop any cached client on hot reload so a fresh instance is used
+ * after `prisma generate` (still restart dev if schema fields seem missing).
  */
+if (process.env.NODE_ENV !== 'production' && globalForPrisma.prisma) {
+  void globalForPrisma.prisma.$disconnect();
+  globalForPrisma.prisma = undefined;
+}
+
 export const prisma: PrismaClient =
   globalForPrisma.prisma ??
   new PrismaClient({
+    // Neon is a remote pooler: each round-trip adds 100-300ms.
+    // Default 5s transaction timeout is too tight for any tx with 3+ queries.
+    transactionOptions: {
+      maxWait: 10_000, // up to 10s to acquire a connection from the pool
+      timeout: 30_000, // up to 30s for the transaction itself to complete
+    },
     log:
       process.env.NODE_ENV === 'development'
         ? [

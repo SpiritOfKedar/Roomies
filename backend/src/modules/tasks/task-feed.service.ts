@@ -45,16 +45,20 @@ export async function buildTaskFeed(taskId: string): Promise<{
   const taskIds = await getTaskLineageIds(taskId);
   const items: FeedItem[] = [];
 
-  const [events, allSubmissions, comments] = await Promise.all([
+  const [events, allSubmissionsFlat, comments] = await Promise.all([
     commentsRepo.getActivityEventsForTasks(taskIds),
-    Promise.all(
-      taskIds.map(async (tid) => {
-        const subs = await submissionsRepo.getSubmissionsWithVotes(tid);
-        return subs.map((s) => ({ ...s, taskId: tid }));
-      }),
-    ),
+    submissionsRepo.getSubmissionsWithVotesBatch(taskIds),
     commentsRepo.getCommentsForTasks(taskIds),
   ]);
+
+  // Group flat submission list by taskId to preserve the same iteration shape
+  const submissionsByTask = new Map<string, typeof allSubmissionsFlat>();
+  for (const sub of allSubmissionsFlat) {
+    const list = submissionsByTask.get(sub.taskId) ?? [];
+    list.push(sub);
+    submissionsByTask.set(sub.taskId, list);
+  }
+  const allSubmissions = taskIds.map((tid) => submissionsByTask.get(tid) ?? []);
 
   for (const ev of events) {
     items.push({

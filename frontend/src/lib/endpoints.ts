@@ -1,9 +1,10 @@
 import api from './api';
 import type {
-  AuthTokens, House, PaginatedTasks, Task, VoteResult, TaskVoteStatus, TaskHistory,
+  AuthTokens, House, HouseDashboard, PaginatedTasks, Task, VoteResult, TaskVoteStatus, TaskHistory,
   TaskFeed, TaskCommentNode, HouseMessage,
   PaginatedExpenses, Expense, ExpenseSplit,
   LeaderboardEntry, TaskSwap, Penalty,
+  RecoveryOptions, RecoveryStatus, RecoveryTokenType, SecurityQuestionAnswer,
 } from '@/types';
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -12,11 +13,52 @@ export const authApi = {
     api.post<{ success: boolean; data: AuthTokens }>('/api/auth/register', { name, email, password }),
   login: (email: string, password: string) =>
     api.post<{ success: boolean; data: AuthTokens }>('/api/auth/login', { email, password }),
+  googleLogin: (idToken: string) =>
+    api.post<{ success: boolean; data: AuthTokens }>('/api/auth/google', { idToken }),
   refresh: (refreshToken: string) =>
     api.post<{ success: boolean; data: AuthTokens }>('/api/auth/refresh', { refreshToken }),
   logout: (refreshToken: string) =>
     api.post('/api/auth/logout', { refreshToken }),
   me: () => api.get<{ success: boolean; data: AuthTokens['user'] }>('/api/users/me'),
+};
+
+export const recoveryApi = {
+  options: (email: string) =>
+    api.post<{ success: boolean; data: RecoveryOptions }>('/api/auth/recovery/options', { email }),
+  sendEmail: (email: string) =>
+    api.post<{ success: boolean; data: { message: string } }>('/api/auth/recovery/email', { email }),
+  verifyQuestions: (email: string, answers: SecurityQuestionAnswer[]) =>
+    api.post<{ success: boolean; data: { recoveryToken: string } }>(
+      '/api/auth/recovery/verify-questions',
+      { email, answers },
+    ),
+  verifyToken: (token: string, type: RecoveryTokenType) =>
+    api.get<{ success: boolean; data: { valid: boolean } }>('/api/auth/recovery/verify-token', {
+      params: { token, type },
+    }),
+  resetPassword: (token: string, type: RecoveryTokenType, newPassword: string) =>
+    api.post<{ success: boolean; data: { message: string } }>('/api/auth/recovery/reset-password', {
+      token,
+      type,
+      newPassword,
+    }),
+};
+
+export const usersApi = {
+  getRecoveryStatus: () =>
+    api.get<{ success: boolean; data: RecoveryStatus }>('/api/users/me/recovery'),
+  setSecurityQuestions: (
+    questions: SecurityQuestionAnswer[],
+    currentPassword?: string,
+  ) =>
+    api.put<{ success: boolean; data: { message: string } }>('/api/users/me/security-questions', {
+      questions,
+      ...(currentPassword ? { currentPassword } : {}),
+    }),
+  deleteSecurityQuestions: (currentPassword?: string) =>
+    api.delete<{ success: boolean; data: { message: string } }>('/api/users/me/security-questions', {
+      data: currentPassword ? { currentPassword } : {},
+    }),
 };
 
 // ── Houses ────────────────────────────────────────────────────────────────────
@@ -25,6 +67,10 @@ export const housesApi = {
     api.get<{ success: boolean; data: House[] }>('/api/houses'),
   get: (id: string) =>
     api.get<{ success: boolean; data: House }>(`/api/houses/${id}`),
+  dashboard: (id: string, statusFilter: 'active' | 'all' = 'active') =>
+    api.get<{ success: boolean; data: HouseDashboard }>(`/api/houses/${id}/dashboard`, {
+      params: { statusFilter },
+    }),
   create: (body: { name: string; address?: string }) =>
     api.post<{ success: boolean; data: House }>('/api/houses', body),
   join: (inviteCode: string) =>
@@ -39,10 +85,15 @@ export const housesApi = {
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
 export const tasksApi = {
-  list: (houseId: string, page = 1, limit = 10) =>
+  list: (houseId: string, page = 1, limit = 10, statusFilter: 'active' | 'all' = 'active') =>
     api.get<{ success: boolean; data: PaginatedTasks }>(`/api/houses/${houseId}/tasks`, {
-      params: { limit, offset: (page - 1) * limit },
+      params: { limit, offset: (page - 1) * limit, statusFilter },
     }),
+  getVoteStatuses: (houseId: string, taskIds: string[]) =>
+    api.get<{ success: boolean; data: Record<string, TaskVoteStatus> }>(
+      `/api/houses/${houseId}/tasks/vote-statuses`,
+      { params: { taskIds: taskIds.join(',') } },
+    ),
   assign: (houseId: string, body: {
     title: string;
     description?: string;
@@ -89,9 +140,9 @@ export const tasksApi = {
 
 // ── House chat ────────────────────────────────────────────────────────────────
 export const messagesApi = {
-  list: (houseId: string, limit = 50, before?: string) =>
+  list: (houseId: string, limit = 50, opts?: { before?: string; after?: string }) =>
     api.get<{ success: boolean; data: HouseMessage[] }>(`/api/houses/${houseId}/messages`, {
-      params: { limit, ...(before ? { before } : {}) },
+      params: { limit, ...(opts?.before ? { before: opts.before } : {}), ...(opts?.after ? { after: opts.after } : {}) },
     }),
   send: (houseId: string, form: FormData) =>
     api.post<{ success: boolean; data: HouseMessage }>(`/api/houses/${houseId}/messages`, form),

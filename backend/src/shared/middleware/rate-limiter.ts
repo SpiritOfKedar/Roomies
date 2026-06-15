@@ -20,8 +20,19 @@ export const authLimiter = rateLimit({
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 500,
   message: 'Too many requests generated from this IP, please try again after 15 minutes',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
+ * Recovery limiter — stricter limits on password recovery endpoints.
+ */
+export const recoveryLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many recovery attempts from this IP, please try again after 15 minutes',
   standardHeaders: true,
   legacyHeaders: false,
 });

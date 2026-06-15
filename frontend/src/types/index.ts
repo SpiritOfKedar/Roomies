@@ -4,6 +4,7 @@ export interface User {
   name: string;
   email: string;
   status: string;
+  avatarUrl?: string | null;
   createdAt: string;
 }
 
@@ -13,6 +14,32 @@ export interface AuthTokens {
     refreshToken: string;
   };
   user: User;
+}
+
+// ── Recovery ──────────────────────────────────────────────────────────────────
+export type RecoveryMethod = 'email' | 'security_questions';
+export type RecoveryTokenType = 'email' | 'recovery';
+
+export interface SecurityQuestionOption {
+  questionId: string;
+  text: string;
+}
+
+export interface RecoveryOptions {
+  methods: RecoveryMethod[];
+  questions: SecurityQuestionOption[];
+}
+
+export interface RecoveryStatus {
+  hasSecurityQuestions: boolean;
+  questionCount: number;
+  hasPassword: boolean;
+  availableQuestions: SecurityQuestionOption[];
+}
+
+export interface SecurityQuestionAnswer {
+  questionId: string;
+  answer: string;
 }
 
 // ── Houses ────────────────────────────────────────────────────────────────────
@@ -35,6 +62,12 @@ export interface House {
   /** Optional: only present if backend populates it */
   inviteCode?: string;
   members: HouseMember[];
+}
+
+export interface HouseDashboard {
+  house: House;
+  tasks: PaginatedTasks;
+  voteStatuses: Record<string, TaskVoteStatus>;
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
@@ -81,6 +114,8 @@ export interface PaginatedTasks {
   limit: number;
   offset: number;
   hasMore: boolean;
+  /** Count of completed/expired/rejected tasks (only set when statusFilter=active) */
+  completedCount?: number;
 }
 
 // ── Votes ─────────────────────────────────────────────────────────────────────

@@ -31,6 +31,11 @@ import { ConflictError, UnauthorizedError } from '../../shared/utils/app-error';
 import * as usersRepo from '../users/users.repository';
 import type { RegisterInput, LoginInput } from './auth.schema';
 import { logger } from '../../shared/utils/logger';
+import {
+  verifyGoogleIdToken,
+  exchangeGoogleCode,
+  type GoogleProfile,
+} from '../../shared/utils/google-oauth';
 
 // ---- Response Types ----
 
@@ -47,6 +52,51 @@ export interface AuthResponse {
 }
 
 // ---- Service Functions ----
+
+async function issueAuthTokens(
+  userId: string,
+  meta: { userAgent?: string; ipAddress?: string } = {},
+): Promise<AuthTokens> {
+  const { accessToken, refreshToken } = generateTokenPair(userId);
+  const refreshTokenHash = await hashPassword(refreshToken);
+
+  await prisma.refreshToken.create({
+    data: {
+      userId,
+      tokenHash: refreshTokenHash,
+      expiresAt: getRefreshTokenExpiry(),
+      userAgent: meta.userAgent || null,
+      ipAddress: meta.ipAddress || null,
+    },
+  });
+
+  return { accessToken, refreshToken };
+}
+
+async function findOrCreateGoogleUser(profile: GoogleProfile): Promise<usersRepo.SafeUser> {
+  const byGoogle = await usersRepo.findUserByGoogleId(profile.googleId);
+  if (byGoogle) {
+    return byGoogle;
+  }
+
+  const byEmail = await usersRepo.findUserByEmail(profile.email);
+  if (byEmail) {
+    if (byEmail.googleId && byEmail.googleId !== profile.googleId) {
+      throw ConflictError('Email already linked to another Google account');
+    }
+
+    if (!byEmail.googleId) {
+      return usersRepo.linkGoogleAccount(byEmail.id, profile.googleId, profile.avatarUrl);
+    }
+  }
+
+  return usersRepo.createUser({
+    name: profile.name,
+    email: profile.email,
+    googleId: profile.googleId,
+    avatarUrl: profile.avatarUrl,
+  });
+}
 
 /**
  * Register a new user account.
@@ -85,26 +135,14 @@ export async function register(
   });
 
   // 4. Generate tokens
-  const { accessToken, refreshToken } = generateTokenPair(user.id);
-
-  // 5. Store hashed refresh token
-  const refreshTokenHash = await hashPassword(refreshToken);
-  await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: refreshTokenHash,
-      expiresAt: getRefreshTokenExpiry(),
-      userAgent: meta.userAgent || null,
-      ipAddress: meta.ipAddress || null,
-    },
-  });
+  const tokens = await issueAuthTokens(user.id, meta);
 
   logger.info({ userId: user.id }, 'User registered');
 
   // 6. Return
   return {
     user,
-    tokens: { accessToken, refreshToken },
+    tokens,
   };
 }
 
@@ -121,7 +159,7 @@ export async function register(
  * @param input - Validated login data (email, password)
  * @param meta  - Request metadata for session tracking
  * @returns User profile and token pair
- * @throws UnauthorizedError if credentials are invalid
+ * @throws UnauthorizedError if email is not found, password is wrong, or account is inactive
  */
 export async function login(
   input: LoginInput,
@@ -130,14 +168,17 @@ export async function login(
   // 1. Find user (need password hash, so use findUserByEmail not safe version)
   const user = await usersRepo.findUserByEmail(input.email);
   if (!user) {
-    // Use generic message to prevent email enumeration
-    throw UnauthorizedError('Invalid email or password');
+    throw UnauthorizedError('Incorrect email and password');
+  }
+
+  if (!user.passwordHash) {
+    throw UnauthorizedError('This account uses Google sign-in. Please sign in with Google.');
   }
 
   // 2. Verify password
   const passwordValid = await comparePassword(input.password, user.passwordHash);
   if (!passwordValid) {
-    throw UnauthorizedError('Invalid email or password');
+    throw UnauthorizedError('Incorrect password');
   }
 
   // 3. Check account status
@@ -146,19 +187,7 @@ export async function login(
   }
 
   // 4. Generate tokens
-  const { accessToken, refreshToken } = generateTokenPair(user.id);
-
-  // Store hashed refresh token
-  const refreshTokenHash = await hashPassword(refreshToken);
-  await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: refreshTokenHash,
-      expiresAt: getRefreshTokenExpiry(),
-      userAgent: meta.userAgent || null,
-      ipAddress: meta.ipAddress || null,
-    },
-  });
+  const tokens = await issueAuthTokens(user.id, meta);
 
   logger.info({ userId: user.id }, 'User logged in');
 
@@ -169,10 +198,51 @@ export async function login(
       name: user.name,
       email: user.email,
       status: user.status,
+      avatarUrl: user.avatarUrl,
       createdAt: user.createdAt,
     },
-    tokens: { accessToken, refreshToken },
+    tokens,
   };
+}
+
+/**
+ * Authenticate or register a user via Google ID token (GIS / One Tap).
+ */
+export async function googleLoginWithIdToken(
+  idToken: string,
+  meta: { userAgent?: string; ipAddress?: string } = {},
+): Promise<AuthResponse> {
+  const profile = await verifyGoogleIdToken(idToken);
+  const user = await findOrCreateGoogleUser(profile);
+
+  if (user.status !== 'active') {
+    throw UnauthorizedError('Account is deactivated');
+  }
+
+  const tokens = await issueAuthTokens(user.id, meta);
+  logger.info({ userId: user.id }, 'User logged in via Google');
+
+  return { user, tokens };
+}
+
+/**
+ * Complete Google OAuth redirect flow using an authorization code.
+ */
+export async function googleLoginWithCode(
+  code: string,
+  meta: { userAgent?: string; ipAddress?: string } = {},
+): Promise<AuthResponse> {
+  const profile = await exchangeGoogleCode(code);
+  const user = await findOrCreateGoogleUser(profile);
+
+  if (user.status !== 'active') {
+    throw UnauthorizedError('Account is deactivated');
+  }
+
+  const tokens = await issueAuthTokens(user.id, meta);
+  logger.info({ userId: user.id }, 'User logged in via Google redirect');
+
+  return { user, tokens };
 }
 
 /**

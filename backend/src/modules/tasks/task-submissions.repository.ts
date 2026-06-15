@@ -49,3 +49,23 @@ export async function getSubmissionById(submissionId: string) {
     where: { id: submissionId },
   });
 }
+
+/**
+ * Load submissions + votes for multiple tasks in a single DB round-trip.
+ * Returns the same shape as getSubmissionsWithVotes but for an array of tasks.
+ */
+export async function getSubmissionsWithVotesBatch(taskIds: string[]) {
+  if (taskIds.length === 0) return [];
+  return prisma.taskSubmission.findMany({
+    where: { taskId: { in: taskIds } },
+    orderBy: { attemptNumber: 'asc' },
+    include: {
+      votes: {
+        include: {
+          user: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+}

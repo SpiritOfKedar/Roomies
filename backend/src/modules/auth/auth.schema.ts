@@ -48,3 +48,17 @@ export const refreshSchema = z.object({
 });
 
 export type RefreshInput = z.infer<typeof refreshSchema>;
+
+// ---- Google OAuth ----
+
+export const googleIdTokenSchema = z.object({
+  idToken: z.string().min(1, 'Google ID token is required'),
+});
+
+export type GoogleIdTokenInput = z.infer<typeof googleIdTokenSchema>;
+
+export const googleCallbackSchema = z.object({
+  code: z.string().min(1, 'Authorization code is required'),
+});
+
+export type GoogleCallbackInput = z.infer<typeof googleCallbackSchema>;

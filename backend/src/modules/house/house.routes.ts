@@ -60,6 +60,16 @@ router.get(
 );
 
 /**
+ * GET /api/houses/:id/dashboard
+ * Aggregate house page data (house + tasks + vote statuses).
+ */
+router.get(
+  '/:id/dashboard',
+  validate({ params: houseIdParamsSchema }),
+  asyncHandler(houseController.getHouseDashboard),
+);
+
+/**
  * POST /api/houses/:id/join
  * Join an existing house.
  */

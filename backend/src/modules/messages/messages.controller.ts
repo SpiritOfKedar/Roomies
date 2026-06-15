@@ -12,9 +12,9 @@ type ListQuery = z.infer<typeof listMessagesQuerySchema>;
 export async function listMessages(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
   const { id: houseId } = req.params as unknown as HouseIdParams;
-  const { limit, before } = req.query as unknown as ListQuery;
+  const { limit, before, after } = req.query as unknown as ListQuery;
 
-  const messages = await messagesService.getHouseMessages(userId, houseId, limit, before);
+  const messages = await messagesService.getHouseMessages(userId, houseId, limit, before, after);
 
   sendSuccess(res, messages);
 }

@@ -4,6 +4,7 @@
  * =============================================================================
  */
 
+import { PrismaClient } from '@prisma/client';
 import { prisma } from '../../shared/db/prisma';
 import {
   AppError,
@@ -15,13 +16,22 @@ import * as houseService from '../house/house.service';
 import * as tasksService from '../tasks/tasks.service';
 import type { RotationResult } from '../tasks/tasks.service';
 import { finalizeTaskVotingIfComplete } from './voting.finalize';
+import {
+  cached,
+  houseVotesKey,
+  invalidateHouseCache,
+} from '../../shared/cache/redis-cache';
+
+type VoteClient =
+  | typeof prisma
+  | Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
 function computeMajority(eligibleVoters: number) {
   return Math.floor(eligibleVoters / 2) + 1;
 }
 
-async function tallySubmissionVotes(submissionId: string) {
-  const votes = await prisma.vote.groupBy({
+async function tallySubmissionVotes(client: VoteClient, submissionId: string) {
+  const votes = await client.vote.groupBy({
     by: ['vote'],
     where: { submissionId },
     _count: { vote: true },
@@ -156,6 +166,7 @@ export async function castVote(
     }
 
     const { approved: approvedVotes, rejected: rejectedVotes } = await tallySubmissionVotes(
+      tx,
       submissionId,
     );
 
@@ -187,6 +198,8 @@ export async function castVote(
     rotation = await maybeRotateAfterComplete(taskId);
   }
 
+  await invalidateHouseCache(task.houseId);
+
   return {
     taskId: result.taskId,
     submissionId: result.submissionId,
@@ -196,6 +209,86 @@ export async function castVote(
     eligibleVoters: result.eligibleVoters,
     rotation: rotation ? toRotationPayload(rotation) : undefined,
   };
+}
+
+/**
+ * Batch vote status for multiple tasks in one house — replaces N individual
+ * getVoteStatus calls from the task list UI.
+ */
+export async function getVoteStatusBatch(
+  userId: string,
+  houseId: string,
+  taskIds: string[],
+): Promise<Record<string, Awaited<ReturnType<typeof getVoteStatus>>>> {
+  if (taskIds.length === 0) return {};
+
+  await houseService.verifyMembership(houseId, userId);
+
+  return cached(houseVotesKey(houseId, userId, taskIds), 10, () =>
+    fetchVoteStatusBatchUncached(userId, houseId, taskIds),
+  );
+}
+
+/** Internal batch fetch without membership check (caller must verify). */
+export async function fetchVoteStatusBatchUncached(
+  userId: string,
+  houseId: string,
+  taskIds: string[],
+): Promise<Record<string, Awaited<ReturnType<typeof getVoteStatus>>>> {
+  if (taskIds.length === 0) return {};
+
+  const tasks = await prisma.task.findMany({
+    where: { id: { in: taskIds }, houseId },
+    select: { id: true, status: true, assignedTo: true, currentSubmissionId: true },
+  });
+
+  const submissionIds = tasks.flatMap((t) => (t.currentSubmissionId ? [t.currentSubmissionId] : []));
+
+  const [votes, totalActiveMembers] = await Promise.all([
+    submissionIds.length > 0
+      ? prisma.vote.findMany({
+          where: { submissionId: { in: submissionIds } },
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        })
+      : Promise.resolve([]),
+    prisma.houseMember.count({ where: { houseId, status: 'active' } }),
+  ]);
+
+  const eligibleVoters = Math.max(0, totalActiveMembers - 1);
+  const majorityThreshold = Math.floor(eligibleVoters / 2) + 1;
+
+  const result: Record<string, Awaited<ReturnType<typeof getVoteStatus>>> = {};
+
+  for (const task of tasks) {
+    const subId = task.currentSubmissionId ?? null;
+    const taskVotes = subId ? votes.filter((v) => v.submissionId === subId) : [];
+    const approved = taskVotes.filter((v) => v.vote === 'approve').length;
+    const rejected = taskVotes.filter((v) => v.vote === 'reject').length;
+    const userVoteRecord = taskVotes.find((v) => v.userId === userId);
+
+    result[task.id] = {
+      taskId: task.id,
+      status: task.status,
+      submissionId: subId,
+      tallies: { approved, rejected, required: majorityThreshold },
+      eligibleVoters,
+      votesCast: taskVotes.length,
+      votingComplete: task.status !== 'submitted',
+      userVote: userVoteRecord
+        ? { vote: userVoteRecord.vote, reason: userVoteRecord.reason }
+        : null,
+      votes: taskVotes.map((v) => ({
+        userId: v.userId,
+        userName: v.user.name,
+        vote: v.vote,
+        reason: v.reason,
+        createdAt: v.createdAt,
+      })),
+    };
+  }
+
+  return result;
 }
 
 /**
@@ -248,7 +341,7 @@ export async function getVoteStatus(userId: string, taskId: string) {
     orderBy: { createdAt: 'asc' },
   });
 
-  const { approved, rejected } = await tallySubmissionVotes(task.currentSubmissionId);
+  const { approved, rejected } = await tallySubmissionVotes(prisma, task.currentSubmissionId);
   const userVoteRecord = votes.find((v) => v.userId === userId);
 
   if (
