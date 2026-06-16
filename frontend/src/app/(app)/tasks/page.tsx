@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import Modal from '@/components/Modal';
 import toast from 'react-hot-toast';
 import { format, isPast, formatDistanceToNow } from 'date-fns';
+import { Icon } from '@/components/Icon';
 
 type FilterStatus = 'all' | 'pending' | 'submitted' | 'completed' | 'rejected' | 'expired' | 'disputed';
 
@@ -166,12 +167,7 @@ export default function TasksPage() {
       )}
 
       <div className="relative">
-        <span
-          className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
-          style={{ fontSize: '20px' }}
-        >
-          search
-        </span>
+        <Icon name="search" size={20} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
         <input
           type="search"
           placeholder="Search your tasks…"

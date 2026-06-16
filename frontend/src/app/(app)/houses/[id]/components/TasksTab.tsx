@@ -12,7 +12,10 @@ import { format } from 'date-fns';
 import VoteModal from './tasks/VoteModal';
 import ResubmitModal from './tasks/ResubmitModal';
 import TaskDetailsModal from './tasks/TaskDetailsModal';
+import AssignTaskModal from './tasks/AssignTaskModal';
 import type { TaskVoteStatus } from '@/types';
+import { Icon } from '@/components/Icon';
+import DatePicker from '@/components/ui/DatePicker';
 
 interface Props {
   house: House;
@@ -244,9 +247,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
     <div className="flex flex-col gap-6">
       {disputedForUser.length > 0 && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
-          <span className="material-symbols-outlined text-amber-600" style={{ fontSize: '24px' }}>
-            warning
-          </span>
+          <Icon name="warning" size={24} className="text-amber-600" />
           <div>
             <p className="font-semibold text-amber-900">
               You have {disputedForUser.length} disputed task
@@ -270,9 +271,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
       <div className="flex flex-col justify-between gap-4 rounded-xl border border-neutral-200 bg-white p-4 sm:flex-row sm:items-center">
         <div className="relative w-full max-w-sm">
           <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-            <span className="material-symbols-outlined text-neutral-400" style={{ fontSize: '20px' }}>
-              search
-            </span>
+            <Icon name="search" size={20} className="text-neutral-400" />
           </div>
           <input
             className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2.5 pl-12 pr-4 text-sm text-neutral-800 placeholder-neutral-400 transition-all focus:border-black focus:ring-1 focus:ring-black"
@@ -310,9 +309,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
               onClick={() => setShowAssign(true)}
               className="flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-neutral-800"
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-                add_task
-              </span>
+              <Icon name="add_task" size={18} />
               Assign Task
             </button>
           )}
@@ -327,9 +324,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
         </div>
       ) : filteredTasks.length === 0 ? (
         <div className="py-20 text-center text-neutral-400">
-          <span className="material-symbols-outlined mb-2 text-neutral-300" style={{ fontSize: '48px' }}>
-            task
-          </span>
+          <Icon name="task" size={48} className="mb-2 text-neutral-300" />
           <p className="text-lg font-semibold text-neutral-700">No tasks yet</p>
           <p className="mt-1 text-sm">Assign a task to get started</p>
         </div>
@@ -383,9 +378,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
                           <div
                             className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${taskStyle.bg} ${taskStyle.text} transition-transform group-hover:scale-105`}
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                              {taskStyle.icon}
-                            </span>
+                            <Icon name={taskStyle.icon} size={20} />
                           </div>
                           <div>
                             <span className="text-base">{task.title}</span>
@@ -444,9 +437,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
                             className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 transition-all hover:bg-black hover:text-white"
                             title="Submit Proof"
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-                              upload
-                            </span>
+                            <Icon name="upload" size={18} />
                           </button>
                         )}
                         {canResubmit && (
@@ -455,9 +446,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
                             className="mx-auto flex size-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition-all hover:bg-amber-600 hover:text-white"
                             title="Resubmit Proof"
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-                              replay
-                            </span>
+                            <Icon name="replay" size={18} />
                           </button>
                         )}
                         {canVote && (
@@ -466,9 +455,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
                             className="mx-auto flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition-all hover:bg-blue-600 hover:text-white"
                             title="Review & Vote"
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-                              fact_check
-                            </span>
+                            <Icon name="fact_check" size={18} />
                           </button>
                         )}
                         {hasVoted && task.status === 'submitted' && !isAssignee && (
@@ -482,9 +469,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
                             className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 transition-all hover:bg-neutral-800 hover:text-white"
                             title="Edit task"
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-                              edit
-                            </span>
+                            <Icon name="edit" size={18} />
                           </button>
                         )}
                         {!canSubmit &&
@@ -493,9 +478,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
                           !hasVoted &&
                           !isAdminEditable(task.status) && (
                           <div className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-50 text-neutral-400 opacity-50">
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-                              check
-                            </span>
+                            <Icon name="check" size={18} />
                           </div>
                         )}
                       </td>
@@ -515,9 +498,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-              chevron_left
-            </span>
+            <Icon name="chevron_left" size={18} />
           </button>
           <span className="text-sm font-medium text-neutral-600">
             Page {page} of {pages}
@@ -527,9 +508,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
             onClick={() => setPage((p) => Math.min(pages, p + 1))}
             disabled={page === pages}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-              chevron_right
-            </span>
+            <Icon name="chevron_right" size={18} />
           </button>
         </div>
       )}
@@ -566,12 +545,11 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-semibold">Due Date</label>
-              <input
-                type="date"
-                className="w-full rounded-lg border border-neutral-200 px-3 py-2"
+              <DatePicker
+                label="Due Date"
                 value={editDue}
-                onChange={(e) => setEditDue(e.target.value)}
+                onChange={setEditDue}
+                minDate={new Date(2020, 0, 1)}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -627,113 +605,31 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
         )}
       </Modal>
 
-      <Modal open={showAssign} onClose={() => setShowAssign(false)} title="Assign Task" size="lg">
-        <form onSubmit={handleAssign} className="grid grid-cols-2 gap-4">
-          <div className="col-span-2">
-            <label className="mb-1 block text-sm font-semibold text-neutral-800">Title</label>
-            <input
-              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-neutral-900 focus:border-black focus:ring-1 focus:ring-black"
-              placeholder="Clean the kitchen"
-              value={assignTitle}
-              onChange={(e) => setAssignTitle(e.target.value)}
-              required
-            />
-          </div>
-          <div className="col-span-2">
-            <label className="mb-1 block text-sm font-semibold text-neutral-800">Description</label>
-            <textarea
-              className="w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-neutral-900 focus:border-black focus:ring-1 focus:ring-black"
-              rows={2}
-              placeholder="Details…"
-              value={assignDesc}
-              onChange={(e) => setAssignDesc(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-neutral-800">Assign To</label>
-            <select
-              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-neutral-900 focus:border-black focus:ring-1 focus:ring-black"
-              value={assignUser}
-              onChange={(e) => setAssignUser(e.target.value)}
-            >
-              <option value="">Auto Assign (Fair Rotation)</option>
-              {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.user?.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-neutral-800">Due Date</label>
-            <input
-              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-neutral-900 focus:border-black focus:ring-1 focus:ring-black"
-              type="date"
-              value={assignDue}
-              onChange={(e) => setAssignDue(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-neutral-800">Weight (points)</label>
-            <input
-              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-neutral-900 focus:border-black focus:ring-1 focus:ring-black"
-              type="number"
-              min={1}
-              max={10}
-              value={assignWeight}
-              onChange={(e) => setAssignWeight(Number(e.target.value))}
-            />
-          </div>
-          <div className="col-span-2 mt-2 flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="isRecurring"
-              checked={assignIsRecurring}
-              onChange={(e) => setAssignIsRecurring(e.target.checked)}
-              className="rounded border-neutral-300 text-black focus:ring-black"
-            />
-            <label htmlFor="isRecurring" className="text-sm font-semibold text-neutral-800">
-              Make this a recurring chore (auto-rotates when completed)
-            </label>
-          </div>
-          <p className="col-span-2 -mt-2 text-xs text-neutral-500">
-            Completed chores automatically assign to the next fair housemate. Uncheck for one-off tasks.
-          </p>
-          {assignIsRecurring && (
-            <div className="col-span-2">
-              <label className="mb-1 block text-sm font-semibold text-neutral-800">Repeat Schedule</label>
-              <select
-                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-neutral-900 focus:border-black focus:ring-1 focus:ring-black"
-                value={assignCronSchedule}
-                onChange={(e) => setAssignCronSchedule(e.target.value)}
-                required={assignIsRecurring}
-              >
-                <option value="">Select frequency…</option>
-                <option value="0 0 * * *">Daily</option>
-                <option value="0 0 * * 0">Weekly</option>
-                <option value="0 0 1 * *">Monthly</option>
-              </select>
-            </div>
-          )}
-          <div className="col-span-2 mt-4 flex gap-3">
-            <button
-              type="button"
-              className="flex-1 rounded-lg bg-neutral-100 py-2 font-semibold text-neutral-700 transition-colors hover:bg-neutral-200"
-              onClick={() => setShowAssign(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="flex-1 rounded-lg bg-black py-2 font-semibold text-white transition-colors hover:bg-neutral-800"
-              disabled={assigning}
-            >
-              {assigning ? 'Assigning…' : 'Assign'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      <AssignTaskModal
+        open={showAssign}
+        onClose={() => setShowAssign(false)}
+        members={members}
+        assigning={assigning}
+        state={{
+          title: assignTitle,
+          description: assignDesc,
+          assignUser: assignUser,
+          dueDate: assignDue,
+          weight: assignWeight,
+          isRecurring: assignIsRecurring,
+          cronSchedule: assignCronSchedule,
+        }}
+        onChange={(key, value) => {
+          if (key === 'title') setAssignTitle(value as string);
+          if (key === 'description') setAssignDesc(value as string);
+          if (key === 'assignUser') setAssignUser(value as string);
+          if (key === 'dueDate') setAssignDue(value as string);
+          if (key === 'weight') setAssignWeight(value as number);
+          if (key === 'isRecurring') setAssignIsRecurring(value as boolean);
+          if (key === 'cronSchedule') setAssignCronSchedule(value as string);
+        }}
+        onSubmit={handleAssign}
+      />
 
       <Modal open={!!submitTask} onClose={() => setSubmitTask(null)} title="Submit Proof">
         <form onSubmit={handleSubmitProof} className="flex flex-col gap-4">

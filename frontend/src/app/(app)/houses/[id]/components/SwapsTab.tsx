@@ -8,6 +8,7 @@ import Modal from '@/components/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
+import { Icon } from '@/components/Icon';
 
 interface Props { houseId: string; members: HouseMember[]; }
 
@@ -97,7 +98,7 @@ export default function SwapsTab({ houseId, members }: Props) {
           onClick={() => { setShowPropose(true); loadMyTasks(); }}
           className="bg-gradient-to-r from-[#22d3ee] to-blue-500 text-slate-900 px-5 py-2.5 rounded-xl text-sm font-bold shadow-[0_0_15px_rgba(34,211,238,0.3)] hover:shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all flex items-center gap-2"
         >
-          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>swap_horiz</span>
+          <Icon name="swap_horiz" size={18} />
           Propose Swap
         </button>
       </div>
@@ -108,7 +109,7 @@ export default function SwapsTab({ houseId, members }: Props) {
         </div>
       ) : swaps.length === 0 ? (
         <div className="text-center py-20 text-slate-400">
-          <span className="material-symbols-outlined mb-2" style={{ fontSize: '48px' }}>swap_horiz</span>
+          <Icon name="swap_horiz" size={48} className="mb-2" />
           <p className="text-lg font-semibold text-slate-300">No swaps yet</p>
           <p className="text-sm mt-1">Propose a task swap to get started</p>
         </div>
@@ -140,7 +141,7 @@ export default function SwapsTab({ houseId, members }: Props) {
                       <span className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-slate-300">
                         <span className="text-[#22d3ee] mr-1">Offering:</span> Task #{swap.offeredTaskId?.slice(-6)}
                       </span>
-                      <span className="material-symbols-outlined text-slate-500" style={{ fontSize: '18px' }}>swap_horiz</span>
+                      <Icon name="swap_horiz" size={18} className="text-slate-500" />
                       <span className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-slate-300">
                         <span className="text-purple-400 mr-1">Wants:</span> Task #{swap.requestedTaskId?.slice(-6)}
                       </span>

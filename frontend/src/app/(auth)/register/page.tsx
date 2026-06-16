@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { Icon } from '@/components/Icon';
 
 export default function RegisterPage() {
   const { register, loginWithGoogle } = useAuth();
@@ -88,7 +89,7 @@ export default function RegisterPage() {
                   onChange={e => setName(e.target.value)}
                   required
                 />
-                <span className="material-symbols-outlined absolute right-3 top-3 text-gray-400 group-focus-within:text-[#2563eb] transition-colors select-none pointer-events-none" style={{ fontSize: '20px' }}>person</span>
+                <Icon name="person" size={20} className="absolute right-3 top-3 text-gray-400 group-focus-within:text-[#2563eb] transition-colors pointer-events-none" />
               </div>
             </label>
 
@@ -104,7 +105,7 @@ export default function RegisterPage() {
                   onChange={e => setEmail(e.target.value)}
                   required
                 />
-                <span className="material-symbols-outlined absolute right-3 top-3 text-gray-400 group-focus-within:text-[#2563eb] transition-colors select-none pointer-events-none" style={{ fontSize: '20px' }}>mail</span>
+                <Icon name="mail" size={20} className="absolute right-3 top-3 text-gray-400 group-focus-within:text-[#2563eb] transition-colors pointer-events-none" />
               </div>
             </label>
 
@@ -126,7 +127,7 @@ export default function RegisterPage() {
                   onClick={() => setShowPw(!showPw)}
                   className="absolute right-3 top-3 text-gray-400 cursor-pointer hover:text-[#111827] transition-colors"
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{showPw ? 'visibility' : 'visibility_off'}</span>
+                  <Icon name={showPw ? 'visibility' : 'visibility_off'} size={20} />
                 </button>
               </div>
             </label>

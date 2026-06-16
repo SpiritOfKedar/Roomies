@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { Icon } from '@/components/Icon';
 
 export default function LoginPage() {
   const { login, loginWithGoogle } = useAuth();
@@ -134,7 +135,7 @@ export default function LoginPage() {
                   aria-invalid={emailError || highlightBothFields ? true : undefined}
                   aria-describedby={emailError ? 'email-error' : error && highlightBothFields ? 'login-error' : undefined}
                 />
-                <span className="material-symbols-outlined absolute right-3 top-3 text-gray-400 group-focus-within:text-[#2563eb] transition-colors select-none pointer-events-none" style={{ fontSize: '20px' }}>mail</span>
+                <Icon name="mail" size={20} className="absolute right-3 top-3 text-gray-400 group-focus-within:text-[#2563eb] transition-colors select-none pointer-events-none" />
               </div>
               {emailError && (
                 <p id="email-error" role="alert" className="text-sm text-red-600">
@@ -169,7 +170,7 @@ export default function LoginPage() {
                   onClick={() => setShowPw(!showPw)}
                   className="absolute right-3 top-3 text-gray-400 cursor-pointer hover:text-[#111827] transition-colors"
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{showPw ? 'visibility' : 'visibility_off'}</span>
+                  <Icon name={showPw ? 'visibility' : 'visibility_off'} size={20} />
                 </button>
               </div>
               {passwordError && (

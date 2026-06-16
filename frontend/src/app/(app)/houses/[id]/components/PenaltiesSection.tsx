@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { formatINR } from '@/lib/currency';
+import { Icon } from '@/components/Icon';
 
 interface Props { houseId: string; members: HouseMember[]; isAdmin: boolean; }
 
@@ -42,7 +43,7 @@ export default function PenaltiesSection({ houseId, members, isAdmin }: Props) {
   if (penalties.length === 0) {
     return (
       <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-2xl text-center py-16 text-slate-400">
-        <span className="material-symbols-outlined mb-2" style={{ fontSize: '48px' }}>sentiment_satisfied</span>
+        <Icon name="sentiment_satisfied" size={48} className="mb-2" />
         <p className="text-lg font-semibold text-slate-300">No penalties</p>
         <p className="text-sm mt-1">Everyone&apos;s been good!</p>
       </div>

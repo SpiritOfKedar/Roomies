@@ -7,13 +7,14 @@ import { housesApi } from '@/lib/endpoints';
 import { useHouseDashboard } from '@/hooks/useHouseDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import TasksTab from './components/TasksTab';
-import ExpensesTab from './components/ExpensesTab';
-import LeaderboardTab from './components/LeaderboardTab';
+import ExpensesTab from './components/expenses/ExpensesTab';
+import LeaderboardTab from './components/leaderboard/LeaderboardTab';
 import SwapsTab from './components/SwapsTab';
-import ChatTab from './components/ChatTab';
+import ChatTab from './components/chat/ChatTab';
 import PenaltiesSection from './components/PenaltiesSection';
 import Modal from '@/components/Modal';
 import toast from 'react-hot-toast';
+import { Icon } from '@/components/Icon';
 
 type Tab = 'tasks' | 'expenses' | 'leaderboard' | 'swaps' | 'chat' | 'penalties';
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -164,9 +165,7 @@ export default function HousePage() {
                 onClick={() => setShowManageHouse(true)}
                 className="flex items-center gap-2 bg-white border border-[#E5E5E5] hover:border-black text-[#171717] px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm text-sm"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-                  settings
-                </span>
+                <Icon name="settings" size={18} />
                 Manage House
               </button>
             </div>
@@ -196,9 +195,7 @@ export default function HousePage() {
                   onClick={() => setShowAddMember(true)}
                   className="flex size-14 z-10 items-center justify-center rounded-full bg-white ring-2 ring-neutral-200 hover:ring-black transition-colors shadow-sm"
                 >
-                  <span className="material-symbols-outlined text-neutral-400" style={{ fontSize: '20px' }}>
-                    add
-                  </span>
+                  <Icon name="add" size={20} className="text-neutral-400" />
                 </button>
               )}
             </div>
@@ -218,9 +215,7 @@ export default function HousePage() {
                   : 'text-[#737373] hover:text-[#171717] hover:bg-white/50'
               }`}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                {t.icon}
-              </span>
+              <Icon name={t.icon} size={20} />
               {t.label}
             </button>
           ))}

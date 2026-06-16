@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { recoveryApi } from '@/lib/endpoints';
 import { getApiErrorMessage } from '@/lib/api-error';
 import type { RecoveryTokenType } from '@/types';
+import { Icon } from '@/components/Icon';
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -118,9 +119,7 @@ function ResetPasswordForm() {
                     onClick={() => setShowPw(!showPw)}
                     className="absolute right-3 top-3 text-gray-400 hover:text-[#111827]"
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                      {showPw ? 'visibility' : 'visibility_off'}
-                    </span>
+                    <Icon name={showPw ? 'visibility' : 'visibility_off'} size={20} />
                   </button>
                 </div>
               </label>

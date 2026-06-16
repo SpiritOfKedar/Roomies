@@ -5,6 +5,7 @@ import type { House, LeaderboardEntry, HouseMember } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
+import { Icon } from '@/components/Icon';
 
 const MEDAL_COLORS = [
   { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', icon: 'emoji_events' },
@@ -118,21 +119,21 @@ export default function CommunityPage() {
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">Houses</span>
-            <span className="material-symbols-outlined text-[#737373]" style={{ fontSize: '18px' }}>home</span>
+            <Icon name="home" size={18} className="text-[#737373]" />
           </div>
           <span className="text-3xl font-extrabold text-[#171717]">{houses.length}</span>
         </div>
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">Total Members</span>
-            <span className="material-symbols-outlined text-blue-500" style={{ fontSize: '18px' }}>group</span>
+            <Icon name="group" size={18} className="text-blue-500" />
           </div>
           <span className="text-3xl font-extrabold text-blue-600">{totalMembers}</span>
         </div>
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">Your Rank</span>
-            <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '18px' }}>emoji_events</span>
+            <Icon name="emoji_events" size={18} className="text-amber-500" />
           </div>
           <span className="text-3xl font-extrabold text-amber-600">
             #{leaderboard.findIndex(e => e.userId === user?.id) + 1 || '—'}
@@ -141,7 +142,7 @@ export default function CommunityPage() {
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">Your Points</span>
-            <span className="material-symbols-outlined text-emerald-500" style={{ fontSize: '18px' }}>stars</span>
+            <Icon name="stars" size={18} className="text-emerald-500" />
           </div>
           <span className="text-3xl font-extrabold text-emerald-600">
             {leaderboard.find(e => e.userId === user?.id)?.totalPoints ?? leaderboard.find(e => e.userId === user?.id)?.score ?? 0}
@@ -180,7 +181,7 @@ export default function CommunityPage() {
         {/* Leaderboard */}
         <div className="lg:col-span-2 space-y-6">
           <h2 className="text-lg font-bold text-[#171717] flex items-center gap-2">
-            <span className="material-symbols-outlined" style={{ fontSize: '22px' }}>leaderboard</span>
+            <Icon name="leaderboard" size={22} />
             Leaderboard
           </h2>
 
@@ -190,7 +191,7 @@ export default function CommunityPage() {
             </div>
           ) : leaderboard.length === 0 ? (
             <div className="text-center py-16 card">
-              <span className="material-symbols-outlined text-neutral-300 mb-2" style={{ fontSize: '48px' }}>leaderboard</span>
+              <Icon name="leaderboard" size={48} className="text-neutral-300 mb-2" />
               <p className="font-semibold text-[#171717]">No leaderboard data yet</p>
               <p className="text-sm text-[#737373] mt-1">Complete tasks to start earning points</p>
             </div>
@@ -208,7 +209,7 @@ export default function CommunityPage() {
                   >
                     <div className="flex items-center gap-5 p-5">
                       <div className={`size-12 rounded-xl flex items-center justify-center shrink-0 border ${medal.bg} ${medal.text} ${medal.border}`}>
-                        <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>{medal.icon}</span>
+                        <Icon name={medal.icon} size={24} />
                       </div>
                       <div className="size-10 rounded-full bg-neutral-200 flex items-center justify-center text-sm font-bold text-[#171717] shrink-0">
                         {(entry.user?.name ?? entry.name)?.[0]?.toUpperCase() ?? '?'}
@@ -224,7 +225,7 @@ export default function CommunityPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <div className="flex items-center gap-1 text-[#171717]">
-                          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>stars</span>
+                          <Icon name="stars" size={18} />
                           <span className="text-xl font-extrabold">{points}</span>
                         </div>
                         {entry.penaltyPoints > 0 && (
@@ -275,7 +276,7 @@ export default function CommunityPage() {
         {/* Members panel */}
         <div className="space-y-6">
           <h2 className="text-lg font-bold text-[#171717] flex items-center gap-2">
-            <span className="material-symbols-outlined" style={{ fontSize: '22px' }}>group</span>
+            <Icon name="group" size={22} />
             Members
           </h2>
 
@@ -326,13 +327,13 @@ export default function CommunityPage() {
                   className="card !p-4 flex items-center gap-3 hover:shadow-md transition-all group"
                 >
                   <div className="size-9 rounded-lg bg-neutral-900 flex items-center justify-center text-white shrink-0">
-                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>home</span>
+                    <Icon name="home" size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-[#171717] text-sm truncate">{h.name}</p>
                     <p className="text-xs text-[#737373]">{h.members?.length ?? 0} members</p>
                   </div>
-                  <span className="material-symbols-outlined text-[#737373] group-hover:text-[#171717] transition-colors" style={{ fontSize: '18px' }}>arrow_forward</span>
+                  <Icon name="arrow_forward" size={18} className="text-[#737373] group-hover:text-[#171717] transition-colors" />
                 </Link>
               ))}
             </div>

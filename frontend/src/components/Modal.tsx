@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
+import { Icon } from '@/components/Icon';
 
 interface ModalProps {
   open: boolean;
@@ -62,7 +63,7 @@ export default function Modal({
             onClick={onClose}
             className="text-text-muted transition-colors hover:text-primary"
           >
-            <span className="material-symbols-outlined">close</span>
+            <Icon name="close" size={20} />
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">

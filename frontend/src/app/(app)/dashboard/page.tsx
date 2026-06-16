@@ -5,6 +5,7 @@ import { housesApi } from '@/lib/endpoints';
 import type { House } from '@/types';
 import Modal from '@/components/Modal';
 import toast from 'react-hot-toast';
+import { Icon } from '@/components/Icon';
 
 /* Gradient palette for house cover placeholders */
 const COVER_GRADIENTS = [
@@ -90,14 +91,14 @@ export default function DashboardPage() {
             onClick={() => setShowJoin(true)}
             className="flex items-center gap-2 bg-white border border-[#E5E5E5] hover:border-black text-[#171717] px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm text-sm"
           >
-            <span className="material-symbols-outlined text-[#737373]" style={{ fontSize: '18px' }}>login</span>
+            <Icon name="login" size={18} className="text-[#737373]" />
             Join via ID
           </button>
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 bg-black hover:bg-neutral-800 text-white px-5 py-2.5 rounded-lg font-semibold transition-all shadow-md hover:shadow-lg text-sm"
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add_home</span>
+            <Icon name="add_home" size={18} />
             Create New House
           </button>
         </div>
@@ -118,7 +119,7 @@ export default function DashboardPage() {
             className="group relative rounded-xl border border-dashed border-neutral-300 hover:border-black bg-neutral-50 hover:bg-white transition-all duration-300 flex flex-col items-center justify-center min-h-[380px] text-center p-8"
           >
             <div className="w-16 h-16 rounded-full bg-white border border-neutral-200 shadow-sm flex items-center justify-center mb-4 group-hover:scale-105 transition-transform duration-300 text-neutral-400 group-hover:text-black">
-              <span className="material-symbols-outlined" style={{ fontSize: '30px' }}>add</span>
+              <Icon name="add" size={30} />
             </div>
             <h3 className="text-lg font-bold text-[#171717] mb-2">Create New House</h3>
             <p className="text-sm text-[#737373] max-w-[200px] font-light">Set up a new space to manage chores, bills and more.</p>
@@ -144,7 +145,7 @@ export default function DashboardPage() {
                 <div className="absolute bottom-5 left-5 text-white">
                   <h3 className="text-xl font-bold leading-tight">{house.name}</h3>
                   <p className="text-sm text-neutral-200 flex items-center gap-1 mt-1 font-light">
-                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>group</span>
+                    <Icon name="group" size={14} />
                     {house.members?.length ?? 0} member{(house.members?.length ?? 0) !== 1 ? 's' : ''}
                   </p>
                 </div>
@@ -178,14 +179,14 @@ export default function DashboardPage() {
                 <div className="space-y-4 mb-8">
                   <div className="flex items-center justify-between text-sm py-2 border-b border-dashed border-neutral-200">
                     <span className="text-[#737373] flex items-center gap-2">
-                      <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>cleaning_services</span>
+                      <Icon name="cleaning_services" size={18} />
                       Next Chore
                     </span>
                     <span className="font-medium text-[#171717]">—</span>
                   </div>
                   <div className="flex items-center justify-between text-sm py-2 border-b border-dashed border-neutral-200">
                     <span className="text-[#737373] flex items-center gap-2">
-                      <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>receipt_long</span>
+                      <Icon name="receipt_long" size={18} />
                       Next Bill
                     </span>
                     <span className="font-medium text-[#171717]">—</span>
@@ -195,7 +196,7 @@ export default function DashboardPage() {
                 {/* Enter button */}
                 <button className="mt-auto w-full py-2.5 bg-white border border-neutral-200 text-[#171717] font-semibold rounded-lg hover:bg-black hover:text-white hover:border-black transition-all flex items-center justify-center gap-2 group/btn text-sm">
                   Enter House
-                  <span className="material-symbols-outlined transition-transform group-hover/btn:translate-x-1" style={{ fontSize: '16px' }}>arrow_forward</span>
+                  <Icon name="arrow_forward" size={16} className="transition-transform group-hover/btn:translate-x-1" />
                 </button>
               </div>
             </article>
@@ -207,7 +208,7 @@ export default function DashboardPage() {
             className="group relative rounded-xl border border-dashed border-neutral-300 hover:border-black bg-neutral-50 hover:bg-white transition-all duration-300 flex flex-col items-center justify-center min-h-[380px] text-center p-8"
           >
             <div className="w-16 h-16 rounded-full bg-white border border-neutral-200 shadow-sm flex items-center justify-center mb-4 group-hover:scale-105 transition-transform duration-300 text-neutral-400 group-hover:text-black">
-              <span className="material-symbols-outlined" style={{ fontSize: '30px' }}>add</span>
+              <Icon name="add" size={30} />
             </div>
             <h3 className="text-lg font-bold text-[#171717] mb-2">Create New House</h3>
             <p className="text-sm text-[#737373] max-w-[200px] font-light">Set up a new space to manage chores, bills and more.</p>

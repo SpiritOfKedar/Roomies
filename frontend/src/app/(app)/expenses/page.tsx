@@ -7,6 +7,7 @@ import Modal from '@/components/Modal';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { formatINR } from '@/lib/currency';
+import { Icon } from '@/components/Icon';
 
 const CATEGORY_ICONS = ['wifi', 'shopping_cart', 'water_drop', 'cleaning_services', 'restaurant', 'local_gas_station', 'electric_bolt', 'build'];
 
@@ -111,7 +112,7 @@ export default function ExpensesPage() {
           onClick={() => setShowAdd(true)}
           className="btn-primary"
         >
-          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
+          <Icon name="add" size={18} />
           Add Expense
         </button>
       </div>
@@ -121,21 +122,21 @@ export default function ExpensesPage() {
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">Total Spending</span>
-            <span className="material-symbols-outlined text-[#737373]" style={{ fontSize: '18px' }}>account_balance_wallet</span>
+            <Icon name="account_balance_wallet" size={18} className="text-[#737373]" />
           </div>
           <span className="text-3xl font-extrabold text-[#171717]">{formatINR(totalSpending)}</span>
         </div>
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">You are owed</span>
-            <span className="material-symbols-outlined text-emerald-500" style={{ fontSize: '18px' }}>arrow_upward</span>
+            <Icon name="arrow_upward" size={18} className="text-emerald-500" />
           </div>
           <span className="text-3xl font-extrabold text-emerald-600">+{formatINR(totalOwedToYou)}</span>
         </div>
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">You owe</span>
-            <span className="material-symbols-outlined text-red-500" style={{ fontSize: '18px' }}>arrow_downward</span>
+            <Icon name="arrow_downward" size={18} className="text-red-500" />
           </div>
           <span className={`text-3xl font-extrabold ${totalOwed > 0 ? 'text-red-600' : 'text-[#737373]'}`}>
             {formatINR(totalOwed)}
@@ -150,7 +151,7 @@ export default function ExpensesPage() {
         </div>
       ) : allExpenses.length === 0 ? (
         <div className="text-center py-20">
-          <span className="material-symbols-outlined text-neutral-300 mb-3" style={{ fontSize: '56px' }}>receipt_long</span>
+          <Icon name="receipt_long" size={56} className="text-neutral-300 mb-3" />
           <p className="text-lg font-semibold text-[#171717]">No expenses yet</p>
           <p className="text-sm text-[#737373] mt-1">Add an expense to get started</p>
         </div>
@@ -178,13 +179,13 @@ export default function ExpensesPage() {
                 </div>
                 <div className="col-span-10 md:col-span-4 flex items-center gap-3">
                   <div className="size-10 rounded-xl bg-neutral-100 flex items-center justify-center text-[#737373] shrink-0">
-                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{CATEGORY_ICONS[idx % CATEGORY_ICONS.length]}</span>
+                    <Icon name={CATEGORY_ICONS[idx % CATEGORY_ICONS.length]} size={20} />
                   </div>
                   <h3 className="font-bold text-[#171717] truncate">{exp.description}</h3>
                 </div>
                 <div className="col-span-6 md:col-span-2">
                   <span className="text-sm text-[#737373] font-medium flex items-center gap-1">
-                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>home</span>
+                    <Icon name="home" size={14} />
                     {house.name}
                   </span>
                 </div>
@@ -200,9 +201,11 @@ export default function ExpensesPage() {
                   <span className="text-lg font-bold text-[#171717]">{formatINR(exp.amount)}</span>
                 </div>
                 <div className="col-span-2 md:col-span-1 flex justify-end md:justify-center">
-                  <span className={`material-symbols-outlined text-[#737373] transition-transform ${expanded.has(exp.id) ? 'rotate-180' : ''}`} style={{ fontSize: '20px' }}>
-                    expand_more
-                  </span>
+                  <Icon
+                    name="expand_more"
+                    size={20}
+                    className={`text-[#737373] transition-transform ${expanded.has(exp.id) ? 'rotate-180' : ''}`}
+                  />
                 </div>
               </div>
 

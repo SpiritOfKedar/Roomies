@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { Icon } from '@/components/Icon';
 
 const navItems = [
   { label: 'My Houses', href: '/dashboard', icon: 'dashboard' },
@@ -23,7 +24,7 @@ export default function Sidebar() {
         <div className="p-6 pb-2">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center text-white shadow-sm shrink-0">
-              <span className="material-symbols-outlined" style={{ fontSize: '22px', lineHeight: 1 }}>roofing</span>
+              <Icon name="roofing" size={22} />
             </div>
             <h1 className="text-xl font-bold tracking-tight text-[#171717]">Roomies</h1>
           </div>
@@ -42,7 +43,7 @@ export default function Sidebar() {
                       : 'text-[#737373] hover:bg-neutral-50 hover:text-[#171717]'
                   }`}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: '20px', lineHeight: 1 }}>{item.icon}</span>
+                  <Icon name={item.icon} size={20} />
                   {item.label}
                 </Link>
               );
@@ -61,14 +62,14 @@ export default function Sidebar() {
                   : 'text-[#737373] hover:bg-neutral-50 hover:text-[#171717]'
               }`}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '20px', lineHeight: 1 }}>settings</span>
+              <Icon name="settings" size={20} />
               Settings
             </Link>
             <button
               onClick={logout}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#737373] hover:bg-neutral-50 hover:text-red-600 text-sm font-medium transition-colors w-full text-left"
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '20px', lineHeight: 1 }}>logout</span>
+              <Icon name="logout" size={20} />
               Log Out
             </button>
           </nav>
@@ -98,7 +99,7 @@ export default function Sidebar() {
                 active ? 'text-[#171717]' : 'text-[#737373]'
               }`}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '22px', lineHeight: 1 }}>{item.icon}</span>
+              <Icon name={item.icon} size={22} />
               {item.label}
             </Link>
           );
@@ -109,7 +110,7 @@ export default function Sidebar() {
             pathname === '/profile' ? 'text-[#171717]' : 'text-[#737373]'
           }`}
         >
-          <span className="material-symbols-outlined" style={{ fontSize: '22px', lineHeight: 1 }}>person</span>
+          <Icon name="person" size={22} />
           Profile
         </Link>
       </nav>
