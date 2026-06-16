@@ -171,6 +171,7 @@ model Task {
   @@index([houseId, createdAt(sort: Desc)]) // task list ORDER BY
   @@index([spawnedFromTaskId])              // lineage walk
   @@index([houseId, status])               // rotation open-instance check + active member queries
+  @@index([houseId, status, createdAt(sort: Desc)]) // active-list filter + sort in one index
   @@index([houseId, title, status])        // same-title duplicate guard
   @@map("tasks")
 }
@@ -350,6 +351,9 @@ model ExpenseSplit {
 model RefreshToken {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @map("user_id") @db.Uuid
+  // Unique JWT ID embedded in the signed refresh token. Enables O(1) lookup on
+  // rotation/logout instead of bcrypt-comparing every active session.
+  jti       String?  @unique @db.Uuid
   tokenHash String   @map("token_hash") @db.Text
   expiresAt DateTime @map("expires_at") @db.Timestamptz
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz

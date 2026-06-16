@@ -12,6 +12,7 @@
 
 import { NotFoundError } from '../../shared/utils/app-error';
 import * as usersRepo from './users.repository';
+import { cached, userProfileKey } from '../../shared/cache/redis-cache';
 import type { SafeUser } from './users.repository';
 
 /**
@@ -22,7 +23,7 @@ import type { SafeUser } from './users.repository';
  * @returns Safe user record (no password hash)
  */
 export async function getUserProfile(userId: string): Promise<SafeUser> {
-  const user = await usersRepo.findUserById(userId);
+  const user = await cached(userProfileKey(userId), 60, () => usersRepo.findUserById(userId));
   if (!user) {
     throw NotFoundError('User');
   }

@@ -6,13 +6,10 @@ import * as houseService from './house.service';
 import * as houseRepo from './house.repository';
 import * as tasksRepo from '../tasks/tasks.repository';
 import { fetchVoteStatusBatchUncached } from '../voting/voting.service';
-import {
-  cached,
-  houseDashboardKey,
-  houseDetailKey,
-} from '../../shared/cache/redis-cache';
+import { cached, houseDashboardKey } from '../../shared/cache/redis-cache';
 
 const DASHBOARD_TASK_LIMIT = 100;
+const DASHBOARD_TTL_SEC = 60;
 
 export async function getHouseDashboard(
   userId: string,
@@ -21,9 +18,11 @@ export async function getHouseDashboard(
 ) {
   await houseService.verifyMembership(houseId, userId);
 
-  return cached(`${houseDashboardKey(houseId, userId)}:${statusFilter}`, 15, async () => {
+  return cached(`${houseDashboardKey(houseId, userId)}:${statusFilter}`, DASHBOARD_TTL_SEC, async () => {
+    // Hit the DB directly here — wrapping these in their own read-through caches
+    // would add extra (remote) Redis round-trips inside an already-cached path.
     const [house, tasksResult] = await Promise.all([
-      cached(houseDetailKey(houseId), 30, () => houseRepo.findHouseWithMembers(houseId)),
+      houseRepo.findHouseWithMembers(houseId),
       tasksRepo.getTasksByHouse(houseId, DASHBOARD_TASK_LIMIT, 0, statusFilter),
     ]);
 

@@ -22,9 +22,14 @@ import { logger } from './shared/utils/logger';
 import { initStorage } from './shared/utils/storage';
 import { globalErrorHandler } from './shared/middleware/error-handler';
 import { apiLimiter } from './shared/middleware/rate-limiter';
-import { disconnectPrisma } from './shared/db/prisma';
+import {
+  disconnectPrisma,
+  warmupDatabase,
+  startDatabaseHeartbeat,
+  stopDatabaseHeartbeat,
+} from './shared/db/prisma';
 import { requestTiming } from './shared/middleware/request-timing';
-import { disconnectCacheRedis } from './shared/cache/redis-cache';
+import { disconnectCacheRedis, warmupRedis } from './shared/cache/redis-cache';
 
 // ---- Module Route Imports ----
 import authRoutes from './modules/auth/auth.routes';
@@ -100,6 +105,10 @@ if (env.NODE_ENV !== 'test') {
   const server = app.listen(env.PORT, () => {
     initStorage().catch((err) => logger.error({ err }, 'Failed to init upload storage'));
     logger.info(`🚀 Roomies backend running on port ${env.PORT} [${env.NODE_ENV}]`);
+    warmupDatabase()
+      .then(() => startDatabaseHeartbeat())
+      .catch((err) => logger.warn({ err }, 'Database warmup failed'));
+    warmupRedis().catch((err) => logger.warn({ err }, 'Redis warmup failed'));
     scheduleTaskSweeperJob().catch((err) =>
       logger.error({ err }, 'Failed to schedule task sweeper'),
     );
@@ -116,6 +125,7 @@ if (env.NODE_ENV !== 'test') {
 
     server.close(async () => {
       logger.info('HTTP server closed.');
+      stopDatabaseHeartbeat();
       await closeQueue();
       await closeWorker();
       await closeRecurringTasksQueue();

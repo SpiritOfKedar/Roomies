@@ -22,15 +22,7 @@ const globalForPrisma = globalThis as unknown as {
 /**
  * Singleton PrismaClient instance.
  * Logs queries in development for debugging.
- *
- * In dev, drop any cached client on hot reload so a fresh instance is used
- * after `prisma generate` (still restart dev if schema fields seem missing).
  */
-if (process.env.NODE_ENV !== 'production' && globalForPrisma.prisma) {
-  void globalForPrisma.prisma.$disconnect();
-  globalForPrisma.prisma = undefined;
-}
-
 export const prisma: PrismaClient =
   globalForPrisma.prisma ??
   new PrismaClient({
@@ -52,6 +44,38 @@ export const prisma: PrismaClient =
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
+}
+
+/**
+ * Wake the Neon pool on startup so the first user request isn't penalized.
+ */
+export async function warmupDatabase(): Promise<void> {
+  const start = performance.now();
+  await prisma.$queryRaw`SELECT 1`;
+  logger.info({ durationMs: Math.round(performance.now() - start) }, 'Database connection warmed up');
+}
+
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Periodically ping the database so Neon's compute never scales to zero during
+ * active use. Without this, the first request after ~5 min of idle pays a
+ * multi-second cold-start penalty. Interval is below Neon's idle threshold.
+ */
+export function startDatabaseHeartbeat(intervalMs = 4 * 60 * 1000): void {
+  if (heartbeatTimer) return;
+  heartbeatTimer = setInterval(() => {
+    prisma.$queryRaw`SELECT 1`.catch((err) => logger.warn({ err }, 'DB heartbeat failed'));
+  }, intervalMs);
+  // Don't let the heartbeat keep the process alive on its own.
+  heartbeatTimer.unref?.();
+}
+
+export function stopDatabaseHeartbeat(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
 }
 
 /**

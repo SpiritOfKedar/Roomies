@@ -1,20 +1,11 @@
 import { Queue } from 'bullmq';
-import Redis from 'ioredis';
-import { env } from '../utils/env';
+import { getRedis } from '../cache/redis-client';
 import { logger } from '../utils/logger';
 
 /**
- * BullMQ requires an underlying ioredis connection.
- * Upstash provides a TLS URL (rediss://); host/port is a local-dev fallback.
+ * BullMQ requires an underlying ioredis connection (shared with cache layer).
  */
-export const redisConnection = env.REDIS_URL
-  ? new Redis(env.REDIS_URL, { maxRetriesPerRequest: null })
-  : new Redis({
-      host: env.REDIS_HOST,
-      port: env.REDIS_PORT,
-      password: env.REDIS_PASSWORD || undefined,
-      maxRetriesPerRequest: null,
-    });
+export const redisConnection = getRedis()!;
 
 /**
  * Instantiate the specific queue for orchestrating task sweeps.
@@ -53,5 +44,4 @@ export async function scheduleTaskSweeperJob() {
 
 export async function closeQueue() {
   await taskSweeperQueue.close();
-  redisConnection.disconnect();
 }

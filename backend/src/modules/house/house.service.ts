@@ -24,7 +24,9 @@ import {
   setCachedMembership,
   invalidateHouseCache,
   invalidateMembership,
+  invalidateUserHouses,
   houseDetailKey,
+  userHousesKey,
 } from '../../shared/cache/redis-cache';
 
 /**
@@ -78,6 +80,7 @@ export async function createHouse(userId: string, name: string) {
   logger.info({ houseId, userId }, 'House created');
 
   await invalidateHouseCache(houseId);
+  await invalidateUserHouses(userId);
 
   return houseWithMembers;
 }
@@ -133,6 +136,7 @@ export async function joinHouse(userId: string, houseId: string) {
 
   await invalidateHouseCache(houseId);
   await invalidateMembership(houseId, userId);
+  await invalidateUserHouses(userId);
 
   return houseWithMembers;
 }
@@ -185,7 +189,7 @@ export async function addMemberByEmail(requestingUserId: string, houseId: string
  * @throws NotFoundError if house doesn't exist
  */
 export async function getHouse(userId: string, houseId: string) {
-  const house = await cached(houseDetailKey(houseId), 30, () => houseRepo.findHouseWithMembers(houseId));
+  const house = await cached(houseDetailKey(houseId), 120, () => houseRepo.findHouseWithMembers(houseId));
   if (!house) {
     throw NotFoundError('House');
   }
@@ -205,7 +209,7 @@ export async function getHouse(userId: string, houseId: string) {
  * @returns Array of houses with membership info
  */
 export async function getUserHouses(userId: string) {
-  return houseRepo.getHousesByUser(userId);
+  return cached(userHousesKey(userId), 120, () => houseRepo.getHousesByUser(userId));
 }
 
 /**

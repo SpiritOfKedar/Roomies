@@ -18,7 +18,7 @@ import {
 export async function getHouseLeaderboard(houseId: string, userId: string) {
   await houseService.verifyMembership(houseId, userId);
 
-  return cached(houseLeaderboardKey(houseId), 60, () => fetchHouseLeaderboard(houseId));
+  return cached(houseLeaderboardKey(houseId), 300, () => fetchHouseLeaderboard(houseId));
 }
 
 async function fetchHouseLeaderboard(houseId: string) {
@@ -31,33 +31,28 @@ async function fetchHouseLeaderboard(houseId: string) {
       score: bigint;
     }>
   >`
-        SELECT 
+        SELECT
             u.id AS user_id,
             u.name AS user_name,
             COALESCE(SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_tasks,
             COALESCE(SUM(CASE WHEN t.status = 'completed' THEN t.reward_points ELSE 0 END), 0) AS total_reward_points,
-            COALESCE((
-                SELECT SUM(p.points) 
-                FROM penalties p 
-                JOIN tasks t2 ON p.task_id = t2.id 
-                WHERE p.user_id = u.id
-                  AND t2.house_id = hm.house_id
-                  AND p.status = 'unpaid'
-            ), 0) AS total_penalty_points,
+            COALESCE(pen.penalty_points, 0) AS total_penalty_points,
             COALESCE(SUM(CASE WHEN t.status = 'completed' THEN t.reward_points ELSE 0 END), 0)
-            - COALESCE((
-                SELECT SUM(p.points) 
-                FROM penalties p 
-                JOIN tasks t2 ON p.task_id = t2.id 
-                WHERE p.user_id = u.id
-                  AND t2.house_id = hm.house_id
-                  AND p.status = 'unpaid'
-            ), 0) AS score
+            - COALESCE(pen.penalty_points, 0) AS score
         FROM house_members hm
         JOIN users u ON hm.user_id = u.id
         LEFT JOIN tasks t ON t.assigned_to = u.id AND t.house_id = hm.house_id
+        LEFT JOIN (
+            -- Aggregate unpaid penalties per user once, instead of a correlated
+            -- subquery evaluated twice for every leaderboard row.
+            SELECT p.user_id, SUM(p.points) AS penalty_points
+            FROM penalties p
+            JOIN tasks t2 ON p.task_id = t2.id
+            WHERE t2.house_id = ${houseId}::uuid AND p.status = 'unpaid'
+            GROUP BY p.user_id
+        ) pen ON pen.user_id = u.id
         WHERE hm.house_id = ${houseId}::uuid AND hm.status = 'active'
-        GROUP BY u.id, u.name, hm.house_id
+        GROUP BY u.id, u.name, pen.penalty_points
         ORDER BY score DESC;
     `;
 

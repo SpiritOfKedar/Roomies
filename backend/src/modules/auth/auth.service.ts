@@ -57,12 +57,13 @@ async function issueAuthTokens(
   userId: string,
   meta: { userAgent?: string; ipAddress?: string } = {},
 ): Promise<AuthTokens> {
-  const { accessToken, refreshToken } = generateTokenPair(userId);
+  const { accessToken, refreshToken, refreshJti } = generateTokenPair(userId);
   const refreshTokenHash = await hashPassword(refreshToken);
 
   await prisma.refreshToken.create({
     data: {
       userId,
+      jti: refreshJti,
       tokenHash: refreshTokenHash,
       expiresAt: getRefreshTokenExpiry(),
       userAgent: meta.userAgent || null,
@@ -271,43 +272,35 @@ export async function refresh(
   refreshTokenStr: string,
   meta: { userAgent?: string; ipAddress?: string } = {},
 ): Promise<AuthTokens> {
-  // 1. Verify JWT
+  // 1. Verify JWT (also gives us the unique jti for an O(1) DB lookup)
   const payload = verifyRefreshToken(refreshTokenStr);
 
-  // 2. Find all valid (non-revoked, non-expired) refresh tokens for user
-  const storedTokens = await prisma.refreshToken.findMany({
-    where: {
-      userId: payload.userId,
-      revoked: false,
-      expiresAt: { gt: new Date() },
-    },
+  // 2. Look up the exact token row by its jti — no full-table bcrypt scan.
+  const stored = await prisma.refreshToken.findUnique({
+    where: { jti: payload.jti },
   });
 
-  if (storedTokens.length === 0) {
-    throw UnauthorizedError('No valid refresh tokens found');
-  }
-
-  // 3. Compare against stored hashes to find the matching token
-  let matchedTokenId: string | null = null;
-  for (const stored of storedTokens) {
-    const isMatch = await comparePassword(refreshTokenStr, stored.tokenHash);
-    if (isMatch) {
-      matchedTokenId = stored.id;
-      break;
-    }
-  }
-
-  if (!matchedTokenId) {
-    // Token was valid JWT but not in DB — likely already rotated
-    // This could indicate token theft; consider revoking all tokens for safety
+  if (
+    !stored ||
+    stored.revoked ||
+    stored.userId !== payload.userId ||
+    stored.expiresAt.getTime() <= Date.now()
+  ) {
+    // Valid JWT signature but no live DB record — already rotated, revoked, or stolen.
     logger.warn({ userId: payload.userId }, 'Refresh token reuse detected');
+    throw UnauthorizedError('Refresh token has been revoked');
+  }
+
+  // 3. Defense-in-depth: confirm the raw token matches the single stored hash.
+  const isMatch = await comparePassword(refreshTokenStr, stored.tokenHash);
+  if (!isMatch) {
     throw UnauthorizedError('Refresh token has been revoked');
   }
 
   // 4. Delete the used token (one-time use)
   try {
     await prisma.refreshToken.delete({
-      where: { id: matchedTokenId },
+      where: { id: stored.id },
     });
   } catch (error: unknown) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -347,29 +340,18 @@ export async function refresh(
  * @throws UnauthorizedError if the token is invalid
  */
 export async function logout(refreshTokenStr: string): Promise<void> {
-  // Verify the JWT first to get the userId
+  // Verify the JWT first to get the userId + jti
   const payload = verifyRefreshToken(refreshTokenStr);
 
-  // Find all tokens for this user and match
-  const storedTokens = await prisma.refreshToken.findMany({
-    where: {
-      userId: payload.userId,
-      revoked: false,
-    },
+  // O(1) lookup by jti — delete the exact session if it still exists.
+  const result = await prisma.refreshToken.deleteMany({
+    where: { jti: payload.jti, userId: payload.userId },
   });
 
-  for (const stored of storedTokens) {
-    const isMatch = await comparePassword(refreshTokenStr, stored.tokenHash);
-    if (isMatch) {
-      // Delete the matched token
-      await prisma.refreshToken.delete({
-        where: { id: stored.id },
-      });
-      logger.info({ userId: payload.userId }, 'User logged out');
-      return;
-    }
+  if (result.count > 0) {
+    logger.info({ userId: payload.userId }, 'User logged out');
+  } else {
+    // Token not found — could already be logged out, which is fine
+    logger.info({ userId: payload.userId }, 'Logout called but token not found in DB');
   }
-
-  // Token not found — could already be logged out, which is fine
-  logger.info({ userId: payload.userId }, 'Logout called but token not found in DB');
 }

@@ -3,28 +3,9 @@
  * Postgres remains source of truth; Redis serves hot reads with short TTLs.
  */
 
-import Redis from 'ioredis';
 import crypto from 'crypto';
-import { env } from '../utils/env';
+import { ensureRedisReady } from './redis-client';
 import { logger } from '../utils/logger';
-
-let cacheRedis: Redis | null = null;
-
-function getCacheRedis(): Redis | null {
-  if (!env.REDIS_URL && !env.REDIS_HOST) return null;
-  if (!cacheRedis) {
-    cacheRedis = env.REDIS_URL
-      ? new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3, enableOfflineQueue: false })
-      : new Redis({
-          host: env.REDIS_HOST,
-          port: env.REDIS_PORT,
-          password: env.REDIS_PASSWORD || undefined,
-          maxRetriesPerRequest: 3,
-          enableOfflineQueue: false,
-        });
-  }
-  return cacheRedis;
-}
 
 export function membershipKey(houseId: string, userId: string): string {
   return `membership:${houseId}:${userId}`;
@@ -55,6 +36,14 @@ export function houseDashboardKey(houseId: string, userId: string): string {
   return `house:${houseId}:dashboard:${userId}`;
 }
 
+export function userHousesKey(userId: string): string {
+  return `user:${userId}:houses`;
+}
+
+export function userProfileKey(userId: string): string {
+  return `user:${userId}:profile`;
+}
+
 export function houseMessagesFeedKey(houseId: string): string {
   return `house:${houseId}:messages:feed`;
 }
@@ -64,7 +53,7 @@ export function houseMessagesFeedKey(houseId: string): string {
  * Falls back to fetcher when Redis is unavailable.
  */
 export async function cached<T>(key: string, ttlSec: number, fetcher: () => Promise<T>): Promise<T> {
-  const redis = getCacheRedis();
+  const redis = await ensureRedisReady();
   if (!redis) return fetcher();
 
   try {
@@ -90,7 +79,7 @@ export async function getCachedMembership(
   houseId: string,
   userId: string,
 ): Promise<boolean | null> {
-  const redis = getCacheRedis();
+  const redis = await ensureRedisReady();
   if (!redis) return null;
 
   try {
@@ -108,9 +97,9 @@ export async function setCachedMembership(
   houseId: string,
   userId: string,
   isActive: boolean,
-  ttlSec = 60,
+  ttlSec = 300,
 ): Promise<void> {
-  const redis = getCacheRedis();
+  const redis = await ensureRedisReady();
   if (!redis) return;
 
   try {
@@ -122,7 +111,7 @@ export async function setCachedMembership(
 
 /** Delete all house-scoped cache keys (detail, tasks, votes, leaderboard, messages, membership). */
 export async function invalidateHouseCache(houseId: string): Promise<void> {
-  const redis = getCacheRedis();
+  const redis = await ensureRedisReady();
   if (!redis) return;
 
   const patterns = [`house:${houseId}:*`, `membership:${houseId}:*`];
@@ -142,7 +131,7 @@ export async function invalidateHouseCache(houseId: string): Promise<void> {
 }
 
 export async function invalidateMembership(houseId: string, userId: string): Promise<void> {
-  const redis = getCacheRedis();
+  const redis = await ensureRedisReady();
   if (!redis) return;
   try {
     await redis.del(membershipKey(houseId, userId));
@@ -151,16 +140,30 @@ export async function invalidateMembership(houseId: string, userId: string): Pro
   }
 }
 
+export async function invalidateUserHouses(userId: string): Promise<void> {
+  const redis = await ensureRedisReady();
+  if (!redis) return;
+  try {
+    await redis.del(userHousesKey(userId));
+  } catch (err) {
+    logger.warn({ err, userId }, 'Redis user houses invalidation failed');
+  }
+}
+
 /** Push a new message JSON to the Redis feed list (newest first). */
 export async function pushMessageToFeed(houseId: string, message: unknown): Promise<void> {
-  const redis = getCacheRedis();
+  const redis = await ensureRedisReady();
   if (!redis) return;
 
   const key = houseMessagesFeedKey(houseId);
   try {
-    await redis.lpush(key, JSON.stringify(message));
-    await redis.ltrim(key, 0, 99);
-    await redis.expire(key, 300);
+    // Pipeline the three ops into a single round-trip instead of three.
+    await redis
+      .multi()
+      .lpush(key, JSON.stringify(message))
+      .ltrim(key, 0, 99)
+      .expire(key, 300)
+      .exec();
   } catch (err) {
     logger.warn({ err, houseId }, 'Redis message feed push failed');
   }
@@ -168,7 +171,7 @@ export async function pushMessageToFeed(houseId: string, message: unknown): Prom
 
 /** Read cached message feed (chronological order). */
 export async function getMessageFeedFromCache(houseId: string, limit: number): Promise<unknown[] | null> {
-  const redis = getCacheRedis();
+  const redis = await ensureRedisReady();
   if (!redis) return null;
 
   try {
@@ -182,9 +185,4 @@ export async function getMessageFeedFromCache(houseId: string, limit: number): P
   return null;
 }
 
-export async function disconnectCacheRedis(): Promise<void> {
-  if (cacheRedis) {
-    await cacheRedis.quit();
-    cacheRedis = null;
-  }
-}
+export { disconnectRedis as disconnectCacheRedis, warmupRedis } from './redis-client';

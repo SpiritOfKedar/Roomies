@@ -292,20 +292,13 @@ export async function expirePendingTasksForMember(
  * @returns Array of House objects (with nested members) the user belongs to
  */
 export async function getHousesByUser(userId: string): Promise<HouseWithMembers[]> {
-  // 1. Find all house IDs the user is an active member of
-  const memberships = await prisma.houseMember.findMany({
-    where: { userId, status: 'active' },
-    select: { houseId: true },
-    orderBy: { joinedAt: 'desc' },
-  });
-
-  if (memberships.length === 0) return [];
-
-  const houseIds = memberships.map((m) => m.houseId);
-
-  // 2. Fetch those houses with their full member lists
   return prisma.house.findMany({
-    where: { id: { in: houseIds } },
+    where: {
+      members: {
+        some: { userId, status: 'active' },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       name: true,

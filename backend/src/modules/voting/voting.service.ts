@@ -224,7 +224,7 @@ export async function getVoteStatusBatch(
 
   await houseService.verifyMembership(houseId, userId);
 
-  return cached(houseVotesKey(houseId, userId, taskIds), 10, () =>
+  return cached(houseVotesKey(houseId, userId, taskIds), 30, () =>
     fetchVoteStatusBatchUncached(userId, houseId, taskIds),
   );
 }
