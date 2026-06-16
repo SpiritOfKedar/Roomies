@@ -53,7 +53,7 @@ export function startRecurringTasksWorker(): void {
         where: {
           status: 'completed',
           rotationSpawnedAt: null,
-          isRecurring: true,
+          chore: { isRecurring: true },
         },
         select: {
           id: true,

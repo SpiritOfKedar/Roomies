@@ -66,7 +66,7 @@ export interface House {
 
 export interface HouseDashboard {
   house: House;
-  tasks: PaginatedTasks;
+  chores: PaginatedChores;
   voteStatuses: Record<string, TaskVoteStatus>;
 }
 
@@ -76,6 +76,8 @@ export type TaskStatus = 'pending' | 'submitted' | 'completed' | 'rejected' | 'e
 export interface Task {
   id: string;
   houseId: string;
+  choreId?: string;
+  cycleNumber?: number;
   /** DB field: assigned_to */
   assignedTo: string;
   title: string;
@@ -115,6 +117,29 @@ export interface PaginatedTasks {
   offset: number;
   hasMore: boolean;
   /** Count of completed/expired/rejected tasks (only set when statusFilter=active) */
+  completedCount?: number;
+}
+
+export interface Chore {
+  id: string;
+  houseId: string;
+  title: string;
+  isRecurring: boolean;
+  cronSchedule?: string | null;
+  rewardPoints: number;
+  penaltyFine: string;
+  createdAt: string;
+  activeInstance: Task | null;
+  completedCycleCount: number;
+  totalCycles: number;
+}
+
+export interface PaginatedChores {
+  items: Chore[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
   completedCount?: number;
 }
 
@@ -185,6 +210,8 @@ export interface TaskFeedItem {
 export interface TaskCommentNode {
   id: string;
   taskId: string;
+  choreId?: string | null;
+  submissionId?: string | null;
   userId: string;
   parentId: string | null;
   body: string;
@@ -192,6 +219,41 @@ export interface TaskCommentNode {
   createdAt: string;
   user: { id: string; name: string };
   replies: TaskCommentNode[];
+}
+
+export interface ChoreThreadSubmission {
+  submissionId: string;
+  attemptNumber: number;
+  imageUrl?: string | null;
+  clarification?: string | null;
+  submittedAt: string;
+  isCurrent: boolean;
+  outcome: string | null;
+  tallies: { approved: number; rejected: number };
+  votes: VoteRecord[];
+  comments: TaskCommentNode[];
+}
+
+export interface ChoreThreadCycle {
+  cycleNumber: number;
+  instanceId: string;
+  assigneeName: string;
+  assigneeId: string;
+  status: string;
+  deadline: string;
+  completedAt?: string;
+  submissions: ChoreThreadSubmission[];
+}
+
+export interface ChoreThread {
+  choreId: string;
+  title: string;
+  isRecurring: boolean;
+  rewardPoints: number;
+  penaltyFine: string | number;
+  maxResubmissions: number;
+  activeInstance: Task | null;
+  cycles: ChoreThreadCycle[];
 }
 
 export interface TaskFeed {

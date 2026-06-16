@@ -3,6 +3,8 @@ import { prisma } from '../../shared/db/prisma';
 const commentSelect = {
   id: true,
   taskId: true,
+  choreId: true,
+  submissionId: true,
   userId: true,
   parentId: true,
   body: true,
@@ -13,6 +15,8 @@ const commentSelect = {
 
 export async function createComment(data: {
   taskId: string;
+  choreId?: string | null;
+  submissionId?: string | null;
   userId: string;
   body: string;
   parentId?: string | null;
@@ -21,6 +25,8 @@ export async function createComment(data: {
   return prisma.taskComment.create({
     data: {
       taskId: data.taskId,
+      choreId: data.choreId ?? null,
+      submissionId: data.submissionId ?? null,
       userId: data.userId,
       body: data.body,
       parentId: data.parentId ?? null,
@@ -44,6 +50,14 @@ export async function deleteComment(commentId: string) {
 export async function getCommentsForTasks(taskIds: string[]) {
   return prisma.taskComment.findMany({
     where: { taskId: { in: taskIds } },
+    select: commentSelect,
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+export async function getCommentsForChore(choreId: string) {
+  return prisma.taskComment.findMany({
+    where: { choreId },
     select: commentSelect,
     orderBy: { createdAt: 'asc' },
   });

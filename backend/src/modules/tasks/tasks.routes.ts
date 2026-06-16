@@ -29,6 +29,7 @@ import {
   houseTaskParamsSchema,
   createTaskCommentSchema,
   taskCommentParamsSchema,
+  choreIdParamsSchema,
 } from './tasks.schema';
 
 /**
@@ -103,6 +104,34 @@ houseTaskRoutes.delete(
   asyncHandler(tasksController.deleteTask),
 );
 
+// ---- House-scoped chore routes (/api/houses/:id/chores) ----
+export const houseChoreRoutes = Router({ mergeParams: true });
+
+houseChoreRoutes.use(requireAuth);
+
+houseChoreRoutes.post(
+  '/assign',
+  validate({ params: houseIdParamsSchema, body: assignTaskSchema }),
+  asyncHandler(tasksController.assignChore),
+);
+
+houseChoreRoutes.get(
+  '/',
+  validate({ params: houseIdParamsSchema, query: paginationQuerySchema }),
+  asyncHandler(tasksController.getChoresByHouse),
+);
+
+// ---- Chore-scoped routes (/api/chores) ----
+export const choreRoutes = Router();
+
+choreRoutes.use(requireAuth);
+
+choreRoutes.get(
+  '/:id/thread',
+  validate({ params: choreIdParamsSchema }),
+  asyncHandler(tasksController.getChoreThread),
+);
+
 // ---- Task-scoped routes (/api/tasks) ----
 export const taskRoutes = Router();
 
@@ -132,6 +161,12 @@ taskRoutes.get(
 /**
  * GET /api/tasks/:id/history
  */
+taskRoutes.get(
+  '/:id/thread',
+  validate({ params: taskIdParamsSchema }),
+  asyncHandler(tasksController.getChoreThreadForTask),
+);
+
 taskRoutes.get(
   '/:id/history',
   validate({ params: taskIdParamsSchema }),

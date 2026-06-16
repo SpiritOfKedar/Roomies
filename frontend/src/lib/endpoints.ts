@@ -1,7 +1,7 @@
 import api from './api';
 import type {
-  AuthTokens, House, HouseDashboard, PaginatedTasks, Task, VoteResult, TaskVoteStatus, TaskHistory,
-  TaskFeed, TaskCommentNode, HouseMessage,
+  AuthTokens, House, HouseDashboard, PaginatedTasks, PaginatedChores, Task, VoteResult, TaskVoteStatus, TaskHistory,
+  TaskFeed, TaskCommentNode, ChoreThread, HouseMessage,
   PaginatedExpenses, Expense, ExpenseSplit,
   LeaderboardEntry, TaskSwap, Penalty,
   RecoveryOptions, RecoveryStatus, RecoveryTokenType, SecurityQuestionAnswer,
@@ -103,15 +103,21 @@ export const tasksApi = {
     isRecurring?: boolean;
     cronSchedule?: string;
   }) =>
-    api.post<{ success: boolean; data: Task }>(`/api/houses/${houseId}/tasks/assign`, body),
+    api.post<{ success: boolean; data: Task }>(`/api/houses/${houseId}/chores/assign`, body),
+  listChores: (houseId: string, page = 1, limit = 10, statusFilter: 'active' | 'all' = 'active') =>
+    api.get<{ success: boolean; data: PaginatedChores }>(`/api/houses/${houseId}/chores`, {
+      params: { limit, offset: (page - 1) * limit, statusFilter },
+    }),
   submit: (_houseId: string, taskId: string, form: FormData) =>
     api.post<{ success: boolean; data: Task }>(`/api/tasks/${taskId}/submit`, form),
   get: (taskId: string) =>
     api.get<{ success: boolean; data: Task }>(`/api/tasks/${taskId}`),
   getVotes: (taskId: string) =>
     api.get<{ success: boolean; data: TaskVoteStatus }>(`/api/tasks/${taskId}/votes`),
-  getHistory: (taskId: string) =>
-    api.get<{ success: boolean; data: TaskHistory }>(`/api/tasks/${taskId}/history`),
+  getThread: (taskId: string) =>
+    api.get<{ success: boolean; data: ChoreThread }>(`/api/tasks/${taskId}/thread`),
+  getChoreThread: (choreId: string) =>
+    api.get<{ success: boolean; data: ChoreThread }>(`/api/chores/${choreId}/thread`),
   vote: (_houseId: string, taskId: string, vote: 'approve' | 'reject', reason?: string) =>
     api.post<{ success: boolean; data: VoteResult }>(
       `/api/tasks/${taskId}/vote`,

@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Modal from '@/components/Modal';
 import { tasksApi } from '@/lib/endpoints';
-import type { Task, TaskVoteStatus } from '@/types';
+import type { Task, TaskVoteStatus, VoteResult } from '@/types';
 import toast from 'react-hot-toast';
 import VoteProgressBar from './VoteProgressBar';
 import { useTaskPolling } from '@/hooks/useTaskPolling';
@@ -13,13 +13,38 @@ interface Props {
   task: Task | null;
   houseId: string;
   onClose: () => void;
-  onVoted: () => void;
+  onVoted: (result: VoteResult, vote: 'approve' | 'reject', reason?: string) => void;
+}
+
+function voteResultToStatus(
+  result: VoteResult,
+  vote: 'approve' | 'reject',
+  reason?: string,
+  prev: TaskVoteStatus | null = null,
+): TaskVoteStatus {
+  const votesCast = result.tallies.approved + result.tallies.rejected;
+  return {
+    taskId: result.taskId,
+    status: result.finalStatus,
+    submissionId: result.submissionId ?? prev?.submissionId ?? null,
+    tallies: result.tallies,
+    eligibleVoters: result.eligibleVoters,
+    votesCast,
+    votingComplete: result.votingComplete ?? false,
+    userVote: { vote, reason: reason ?? null },
+    votes: prev?.votes ?? [],
+  };
 }
 
 export default function VoteModal({ task, houseId, onClose, onVoted }: Props) {
   const [rejectReason, setRejectReason] = useState('');
   const [voteStatus, setVoteStatus] = useState<TaskVoteStatus | null>(null);
   const [voting, setVoting] = useState(false);
+
+  useEffect(() => {
+    setVoteStatus(null);
+    setRejectReason('');
+  }, [task?.id]);
 
   useTaskPolling(task?.id ?? null, !!task && !voteStatus?.userVote, setVoteStatus);
 
@@ -45,7 +70,10 @@ export default function VoteModal({ task, houseId, onClose, onVoted }: Props) {
       } else {
         toast.success('Vote recorded');
       }
-      onVoted();
+      const voteType = vote;
+      const reason = vote === 'reject' ? rejectReason || undefined : undefined;
+      setVoteStatus((prev) => voteResultToStatus(result, voteType, reason, prev));
+      onVoted(result, voteType, reason);
       onClose();
     } catch {
       toast.error('Vote failed');

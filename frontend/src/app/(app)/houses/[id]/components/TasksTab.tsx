@@ -13,7 +13,8 @@ import VoteModal from './tasks/VoteModal';
 import ResubmitModal from './tasks/ResubmitModal';
 import TaskDetailsModal from './tasks/TaskDetailsModal';
 import AssignTaskModal from './tasks/AssignTaskModal';
-import type { TaskVoteStatus } from '@/types';
+import type { TaskVoteStatus, VoteResult } from '@/types';
+import { queryKeys } from '@/lib/query-keys';
 import { Icon } from '@/components/Icon';
 import DatePicker from '@/components/ui/DatePicker';
 
@@ -93,41 +94,82 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
     initialData: statusFilter === 'active' ? prefetchedDashboard : undefined,
   });
 
-  const tasks = data?.tasks.items ?? [];
+  const chores = data?.chores.items ?? [];
   const voteStatuses = data?.voteStatuses ?? {};
-  const completedCount = data?.tasks.completedCount ?? 0;
+  const completedCount = data?.chores.completedCount ?? 0;
+
+  const activeTasks = useMemo(
+    () =>
+      chores
+        .map((c) => c.activeInstance)
+        .filter((t): t is Task => t != null),
+    [chores],
+  );
 
   const refreshTasks = () => {
     queryClient.invalidateQueries({ queryKey: ['house', houseId, 'dashboard'] });
+  };
+
+  const handleVoted = async (
+    result: VoteResult,
+    vote: 'approve' | 'reject',
+    reason?: string,
+  ) => {
+    const key = queryKeys.houseDashboard(houseId, statusFilter);
+    queryClient.setQueryData<HouseDashboard>(key, (old) => {
+      if (!old) return old;
+      const votesCast = result.tallies.approved + result.tallies.rejected;
+      const prev = old.voteStatuses[result.taskId];
+      return {
+        ...old,
+        voteStatuses: {
+          ...old.voteStatuses,
+          [result.taskId]: {
+            taskId: result.taskId,
+            status: result.finalStatus,
+            submissionId: result.submissionId ?? prev?.submissionId ?? null,
+            tallies: result.tallies,
+            eligibleVoters: result.eligibleVoters,
+            votesCast,
+            votingComplete: result.votingComplete ?? false,
+            userVote: { vote, reason: reason ?? null },
+            votes: prev?.votes ?? [],
+          },
+        },
+      };
+    });
+    await queryClient.invalidateQueries({ queryKey: key });
   };
 
   const isAdminEditable = (status: string) =>
     isAdmin && ['pending', 'submitted', 'disputed'].includes(status);
 
   const disputedForUser = useMemo(
-    () => tasks.filter((t) => t.assignedTo === user?.id && t.status === 'disputed'),
-    [tasks, user?.id],
+    () => activeTasks.filter((t) => t.assignedTo === user?.id && t.status === 'disputed'),
+    [activeTasks, user?.id],
   );
 
-  const filteredTasks = useMemo(() => {
+  const filteredChores = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return tasks;
-    return tasks.filter((t) => {
+    if (!q) return chores;
+    return chores.filter((c) => {
+      const task = c.activeInstance;
       const assigneeName =
-        members.find((m) => m.userId === t.assignedTo)?.user?.name ?? t.assignee?.name ?? '';
+        task &&
+        (members.find((m) => m.userId === task.assignedTo)?.user?.name ?? task.assignee?.name ?? '');
       return (
-        t.title.toLowerCase().includes(q) ||
-        t.status.toLowerCase().includes(q) ||
-        assigneeName.toLowerCase().includes(q)
+        c.title.toLowerCase().includes(q) ||
+        (task?.status.toLowerCase().includes(q) ?? false) ||
+        (assigneeName?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [tasks, searchQuery, members]);
+  }, [chores, searchQuery, members]);
 
-  const pages = Math.max(1, Math.ceil(filteredTasks.length / limit));
-  const pagedTasks = useMemo(() => {
+  const pages = Math.max(1, Math.ceil(filteredChores.length / limit));
+  const pagedChores = useMemo(() => {
     const start = (page - 1) * limit;
-    return filteredTasks.slice(start, start + limit);
-  }, [filteredTasks, page, limit]);
+    return filteredChores.slice(start, start + limit);
+  }, [filteredChores, page, limit]);
 
   useEffect(() => {
     setPage(1);
@@ -135,10 +177,11 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
 
   useEffect(() => {
     if (viewTask) {
-      const updated = tasks.find((t) => t.id === viewTask.id);
+      const chore = chores.find((c) => c.activeInstance?.id === viewTask.id);
+      const updated = chore?.activeInstance;
       if (updated) setViewTask(updated);
     }
-  }, [tasks, viewTask?.id]);
+  }, [chores, viewTask?.id]);
 
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -283,7 +326,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sm text-neutral-500">
-            {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}
+            {filteredChores.length} chore{filteredChores.length !== 1 ? 's' : ''}
             {searchQuery.trim() ? ` matching "${searchQuery.trim()}"` : ''}
           </span>
           {!showCompleted && completedCount > 0 && (
@@ -292,7 +335,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
               onClick={() => setShowCompleted(true)}
               className="rounded-md bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-200"
             >
-              Show {completedCount} completed
+              Show {completedCount} finished
             </button>
           )}
           {showCompleted && (
@@ -301,7 +344,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
               onClick={() => setShowCompleted(false)}
               className="rounded-md bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 transition-colors hover:bg-green-100"
             >
-              Hide completed
+              Hide finished
             </button>
           )}
           {isAdmin && (
@@ -322,7 +365,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
             <div key={i} className="h-16 animate-pulse rounded-xl bg-neutral-100" />
           ))}
         </div>
-      ) : filteredTasks.length === 0 ? (
+      ) : filteredChores.length === 0 ? (
         <div className="py-20 text-center text-neutral-400">
           <Icon name="task" size={48} className="mb-2 text-neutral-300" />
           <p className="text-lg font-semibold text-neutral-700">No tasks yet</p>
@@ -343,7 +386,9 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {pagedTasks.map((task, idx) => {
+                {pagedChores.map((chore, idx) => {
+                  const task = chore.activeInstance;
+                  if (!task) return null;
                   const isAssignee = task.assignedTo === user?.id;
                   const canSubmit = isAssignee && task.status === 'pending';
                   const canResubmit = isAssignee && task.status === 'disputed';
@@ -363,7 +408,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
 
                   return (
                     <tr
-                      key={task.id}
+                      key={chore.id}
                       className={`group cursor-pointer transition-all duration-200 hover:bg-neutral-50 ${
                         isOverdue ? 'bg-red-50 hover:bg-red-100' : ''
                       } ${isDone ? 'opacity-60' : ''}`}
@@ -381,7 +426,14 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
                             <Icon name={taskStyle.icon} size={20} />
                           </div>
                           <div>
-                            <span className="text-base">{task.title}</span>
+                            <span className="text-base">{chore.title}</span>
+                            {chore.isRecurring && chore.totalCycles > 1 && (
+                              <p className="mt-0.5 text-xs text-neutral-500">
+                                Cycle {task.cycleNumber ?? chore.totalCycles}
+                                {chore.completedCycleCount > 0 &&
+                                  ` · ${chore.completedCycleCount} completed`}
+                              </p>
+                            )}
                             {task.status === 'submitted' && vs && (
                               <p className="mt-0.5 text-xs text-neutral-500">
                                 {vs.votesCast}/{vs.eligibleVoters} votes · need {vs.tallies.required}
@@ -428,7 +480,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
                         {task.deadline ? format(new Date(task.deadline), 'MMM d, h:mm a') : '—'}
                       </td>
                       <td className="px-6 py-4 text-right font-semibold text-green-600">
-                        +{task.rewardPoints ?? 10} pts
+                        +{chore.rewardPoints ?? task.rewardPoints ?? 10} pts
                       </td>
                       <td className="px-6 py-4 text-center">
                         {canSubmit && (
@@ -680,7 +732,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard 
         task={voteTask}
         houseId={houseId}
         onClose={() => setVoteTask(null)}
-        onVoted={refreshTasks}
+        onVoted={handleVoted}
       />
 
       <ResubmitModal

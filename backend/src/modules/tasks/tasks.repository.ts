@@ -106,6 +106,8 @@ export async function createTaskInTx(
   tx: TxClient,
   data: {
     houseId: string;
+    choreId: string;
+    cycleNumber: number;
     assignedTo: string;
     title: string;
     deadline: Date;
@@ -119,6 +121,8 @@ export async function createTaskInTx(
   return tx.task.create({
     data: {
       houseId: data.houseId,
+      choreId: data.choreId,
+      cycleNumber: data.cycleNumber,
       assignedTo: data.assignedTo,
       title: data.title,
       status: 'pending',
@@ -132,6 +136,8 @@ export async function createTaskInTx(
     select: {
       id: true,
       houseId: true,
+      choreId: true,
+      cycleNumber: true,
       assignedTo: true,
       title: true,
       status: true,
@@ -182,6 +188,8 @@ export async function findTaskById(taskId: string) {
     select: {
       id: true,
       houseId: true,
+      choreId: true,
+      cycleNumber: true,
       assignedTo: true,
       title: true,
       status: true,
@@ -346,9 +354,11 @@ export async function getChoreRotationStats(
 const ACTIVE_STATUSES = ['pending', 'submitted', 'disputed'];
 const DONE_STATUSES = ['completed', 'expired', 'rejected'];
 
-const TASK_LIST_SELECT = {
+export const TASK_LIST_SELECT = {
   id: true,
   houseId: true,
+  choreId: true,
+  cycleNumber: true,
   assignedTo: true,
   title: true,
   status: true,

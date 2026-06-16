@@ -34,6 +34,7 @@ import { prisma } from '../../shared/db/prisma';
 
 import { AppError, NotFoundError, ForbiddenError } from '../../shared/utils/app-error';
 import * as tasksRepo from './tasks.repository';
+import * as choresRepo from './chores.repository';
 import * as submissionsRepo from './task-submissions.repository';
 import * as houseService from '../house/house.service';
 import { logger } from '../../shared/utils/logger';
@@ -44,6 +45,7 @@ import * as houseRepo from '../house/house.repository';
 import * as commentsRepo from './task-comments.repository';
 import { logTaskActivity } from './task-activity.service';
 import { buildTaskFeed } from './task-feed.service';
+import { buildChoreThread } from './chore-thread.service';
 import {
   cached,
   houseTasksKey,
@@ -53,6 +55,7 @@ import {
 export interface RotationAssignOptions {
   excludeUserId?: string;
   choreTitle?: string;
+  choreId?: string;
   spawnedFromTaskId?: string;
   rewardPoints?: number;
   penaltyFine?: number;
@@ -291,17 +294,59 @@ async function executeAssignmentInTx(
     );
   }
 
-  const createdTask = await tasksRepo.createTaskInTx(tx, {
-    houseId,
-    assignedTo: assignedMemberId,
-    title,
-    deadline,
-    rewardPoints,
-    penaltyFine,
-    isRecurring,
-    cronSchedule,
-    spawnedFromTaskId: rotationOptions?.spawnedFromTaskId,
-  });
+  const createdTask = await (async () => {
+    let choreId = rotationOptions?.choreId;
+    let cycleNumber = 1;
+
+    if (choreId) {
+      cycleNumber = await choresRepo.getNextCycleNumber(tx, choreId);
+    } else {
+      const existingChore = await tx.chore.findUnique({
+        where: { houseId_title: { houseId, title } },
+      });
+      if (existingChore) {
+        const openCount = await tx.task.count({
+          where: {
+            choreId: existingChore.id,
+            status: { in: ['pending', 'submitted', 'disputed'] },
+          },
+        });
+        if (openCount > 0) {
+          throw new AppError(
+            `An open instance of "${title}" already exists. Complete or resolve it first.`,
+            400,
+          );
+        }
+        choreId = existingChore.id;
+        cycleNumber = await choresRepo.getNextCycleNumber(tx, choreId);
+      } else {
+        const chore = await choresRepo.createChoreInTx(tx, {
+          houseId,
+          title,
+          isRecurring,
+          cronSchedule,
+          rewardPoints,
+          penaltyFine,
+        });
+        choreId = chore.id;
+        cycleNumber = 1;
+      }
+    }
+
+    return tasksRepo.createTaskInTx(tx, {
+      houseId,
+      choreId,
+      cycleNumber,
+      assignedTo: assignedMemberId,
+      title,
+      deadline,
+      rewardPoints,
+      penaltyFine,
+      isRecurring,
+      cronSchedule,
+      spawnedFromTaskId: rotationOptions?.spawnedFromTaskId,
+    });
+  })();
 
   await logTaskActivity(
     createdTask.id,
@@ -342,6 +387,7 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
     select: {
       id: true,
       houseId: true,
+      choreId: true,
       assignedTo: true,
       title: true,
       status: true,
@@ -352,6 +398,14 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
       penaltyFine: true,
       isRecurring: true,
       cronSchedule: true,
+      chore: {
+        select: {
+          isRecurring: true,
+          cronSchedule: true,
+          rewardPoints: true,
+          penaltyFine: true,
+        },
+      },
     },
   });
 
@@ -364,7 +418,8 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
   if (completed.rotationSpawnedAt) {
     return { rotated: false, reason: 'already_rotated', skipped: true };
   }
-  if (!completed.isRecurring) {
+  const isRecurring = completed.chore?.isRecurring ?? completed.isRecurring;
+  if (!isRecurring) {
     await prisma.task.update({
       where: { id: completedTaskId },
       data: { rotationSpawnedAt: new Date() },
@@ -375,8 +430,7 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
 
   const openDuplicate = await prisma.task.count({
     where: {
-      houseId: completed.houseId,
-      title: completed.title,
+      choreId: completed.choreId,
       id: { not: completedTaskId },
       status: { in: ['pending', 'submitted', 'disputed'] },
     },
@@ -404,10 +458,14 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
   }
 
   const newDeadline = computeNextRotationDeadline(
-    completed.cronSchedule,
+    completed.chore?.cronSchedule ?? completed.cronSchedule,
     completed.createdAt,
     completed.deadline,
   );
+
+  const choreReward = completed.chore?.rewardPoints ?? completed.rewardPoints;
+  const chorePenalty = Number(completed.chore?.penaltyFine ?? completed.penaltyFine);
+  const choreCron = completed.chore?.cronSchedule ?? completed.cronSchedule ?? undefined;
 
   const newTask = await prisma.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<{ rotation_spawned_at: Date | null }[]>`
@@ -421,13 +479,14 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
       houseId: completed.houseId,
       title: completed.title,
       deadline: newDeadline,
-      rewardPoints: completed.rewardPoints,
-      penaltyFine: Number(completed.penaltyFine),
-      isRecurring: completed.isRecurring,
-      cronSchedule: completed.cronSchedule ?? undefined,
+      rewardPoints: choreReward,
+      penaltyFine: chorePenalty,
+      isRecurring,
+      cronSchedule: choreCron,
       rotationOptions: {
         excludeUserId: completed.assignedTo,
         choreTitle: completed.title,
+        choreId: completed.choreId,
         spawnedFromTaskId: completedTaskId,
       },
     });
@@ -646,6 +705,27 @@ export async function getTasksByHouse(
   );
 
   return { tasks, total, limit, offset, completedCount };
+}
+
+/**
+ * Get paginated chores for a house (one row per chore template).
+ */
+export async function getChoresByHouse(
+  userId: string,
+  houseId: string,
+  limit: number,
+  offset: number,
+  statusFilter: 'active' | 'all' = 'active',
+) {
+  await houseService.verifyMembership(houseId, userId);
+
+  const { chores, total, completedChoreCount } = await cached(
+    `house:${houseId}:chores:${statusFilter}:${limit}:${offset}`,
+    15,
+    () => choresRepo.getChoresByHouse(houseId, limit, offset, statusFilter),
+  );
+
+  return { chores, total, limit, offset, completedChoreCount };
 }
 
 /**
@@ -872,7 +952,40 @@ export async function getTaskFeed(userId: string, taskId: string) {
 }
 
 /**
- * Add a threaded comment on a chore.
+ * Full chore thread across all rotation cycles.
+ */
+export async function getChoreThread(userId: string, choreId: string) {
+  const chore = await prisma.chore.findUnique({
+    where: { id: choreId },
+    select: { houseId: true },
+  });
+  if (!chore) throw NotFoundError('Chore');
+
+  await houseService.verifyMembership(chore.houseId, userId);
+
+  const thread = await buildChoreThread(choreId);
+  if (!thread) throw NotFoundError('Chore');
+
+  return thread;
+}
+
+/**
+ * Resolve chore thread from a task instance id.
+ */
+export async function getChoreThreadForTask(userId: string, taskId: string) {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { choreId: true, houseId: true },
+  });
+  if (!task) throw NotFoundError('Task');
+
+  await houseService.verifyMembership(task.houseId, userId);
+
+  return getChoreThread(userId, task.choreId);
+}
+
+/**
+ * Add a threaded comment on a chore submission.
  */
 export async function createTaskComment(
   userId: string,
@@ -880,21 +993,45 @@ export async function createTaskComment(
   body: string,
   parentId?: string,
   imageUrl?: string,
+  submissionId?: string,
 ) {
   const task = await tasksRepo.findTaskById(taskId);
   if (!task) throw NotFoundError('Task');
 
   await houseService.verifyMembership(task.houseId, userId);
 
+  const taskWithChore = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { choreId: true },
+  });
+  if (!taskWithChore) throw NotFoundError('Task');
+
+  if (submissionId) {
+    const submission = await prisma.taskSubmission.findFirst({
+      where: { id: submissionId, taskId: { in: await choresRepo.getInstanceIdsForChore(taskWithChore.choreId) } },
+    });
+    if (!submission) {
+      throw new AppError('Submission not found on this chore', 400);
+    }
+  }
+
   if (parentId) {
     const parent = await commentsRepo.findCommentById(parentId);
-    if (!parent || parent.taskId !== taskId) {
+    if (!parent) {
+      throw new AppError('Parent comment not found', 400);
+    }
+    if (submissionId && parent.submissionId !== submissionId) {
+      throw new AppError('Parent comment must be on the same submission', 400);
+    }
+    if (!submissionId && parent.taskId !== taskId) {
       throw new AppError('Parent comment not found on this task', 400);
     }
   }
 
   return commentsRepo.createComment({
     taskId,
+    choreId: taskWithChore.choreId,
+    submissionId: submissionId ?? null,
     userId,
     body,
     parentId,

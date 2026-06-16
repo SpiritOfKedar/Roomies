@@ -94,6 +94,7 @@ export type HouseTaskParams = z.infer<typeof houseTaskParamsSchema>;
 export const createTaskCommentSchema = z.object({
   body: z.string().min(1).max(5000).trim(),
   parentId: z.string().uuid().optional(),
+  submissionId: z.string().uuid().optional(),
 });
 
 export type CreateTaskCommentInput = z.infer<typeof createTaskCommentSchema>;
@@ -102,5 +103,11 @@ export const taskCommentParamsSchema = z.object({
   id: z.string().uuid('Invalid task ID'),
   commentId: z.string().uuid('Invalid comment ID'),
 });
+
+export const choreIdParamsSchema = z.object({
+  id: z.string().uuid('Invalid chore ID'),
+});
+
+export type ChoreIdParams = z.infer<typeof choreIdParamsSchema>;
 
 export type TaskCommentParams = z.infer<typeof taskCommentParamsSchema>;

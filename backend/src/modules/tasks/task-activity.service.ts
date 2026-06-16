@@ -35,38 +35,19 @@ export async function logTaskActivity(
   });
 }
 
-/** Collect task IDs in rotation lineage (ancestors + descendants). */
+/** Collect all task instance IDs for a chore (replaces lineage walk). */
 export async function getTaskLineageIds(taskId: string): Promise<string[]> {
-  const ids = new Set<string>([taskId]);
-
-  let current = await prisma.task.findUnique({
+  const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { spawnedFromTaskId: true },
+    select: { choreId: true },
+  });
+  if (!task) return [taskId];
+
+  const instances = await prisma.task.findMany({
+    where: { choreId: task.choreId },
+    select: { id: true },
+    orderBy: { cycleNumber: 'asc' },
   });
 
-  while (current?.spawnedFromTaskId) {
-    if (ids.has(current.spawnedFromTaskId)) break;
-    ids.add(current.spawnedFromTaskId);
-    current = await prisma.task.findUnique({
-      where: { id: current.spawnedFromTaskId },
-      select: { spawnedFromTaskId: true },
-    });
-  }
-
-  const queue = [taskId];
-  while (queue.length > 0) {
-    const id = queue.shift()!;
-    const children = await prisma.task.findMany({
-      where: { spawnedFromTaskId: id },
-      select: { id: true },
-    });
-    for (const child of children) {
-      if (!ids.has(child.id)) {
-        ids.add(child.id);
-        queue.push(child.id);
-      }
-    }
-  }
-
-  return Array.from(ids);
+  return instances.map((i) => i.id);
 }

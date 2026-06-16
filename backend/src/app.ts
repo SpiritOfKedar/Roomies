@@ -35,7 +35,7 @@ import { disconnectCacheRedis, warmupRedis } from './shared/cache/redis-cache';
 import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
 import houseRoutes from './modules/house/house.routes';
-import { houseTaskRoutes, taskRoutes } from './modules/tasks/tasks.routes';
+import { houseTaskRoutes, houseChoreRoutes, choreRoutes, taskRoutes } from './modules/tasks/tasks.routes';
 import { votingRoutes } from './modules/voting/voting.routes';
 import { leaderboardRoutes } from './modules/leaderboard/leaderboard.routes';
 import { penaltyRoutes } from './modules/penalty/penalty.routes';
@@ -87,6 +87,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/houses', houseRoutes);
 app.use('/api/houses/:id/tasks', houseTaskRoutes);
+app.use('/api/houses/:id/chores', houseChoreRoutes);
+app.use('/api/chores', choreRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/tasks', votingRoutes);
 app.use('/api/houses', leaderboardRoutes); // /api/houses/:id/leaderboard

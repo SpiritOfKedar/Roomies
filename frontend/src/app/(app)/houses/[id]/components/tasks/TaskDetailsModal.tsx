@@ -4,10 +4,9 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
 import Modal from '@/components/Modal';
 import { tasksApi } from '@/lib/endpoints';
-import type { Task, TaskFeed, TaskVoteStatus, HouseMember, TaskHistory } from '@/types';
+import type { Task, ChoreThread, TaskVoteStatus, HouseMember } from '@/types';
 import VoteProgressBar from './VoteProgressBar';
-import ChoreFeed from './ChoreFeed';
-import SubmissionTimeline from './SubmissionTimeline';
+import ChoreThreadView from './ChoreThread';
 import { useTaskPolling } from '@/hooks/useTaskPolling';
 import { resolveTaskProofUrl } from '@/lib/proofUrl';
 import { formatINR } from '@/lib/currency';
@@ -23,9 +22,11 @@ interface Props {
   onVote: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  /** Open directly on thread tab (e.g. after voting) */
+  initialTab?: 'overview' | 'thread';
 }
 
-type DetailTab = 'overview' | 'history' | 'discussion';
+type DetailTab = 'overview' | 'thread';
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-neutral-100 text-neutral-700',
@@ -70,14 +71,13 @@ export default function TaskDetailsModal({
   onVote,
   onEdit,
   onDelete,
+  initialTab = 'overview',
 }: Props) {
   const [detailTask, setDetailTask] = useState<Task | null>(task);
-  const [feed, setFeed] = useState<TaskFeed | null>(null);
-  const [history, setHistory] = useState<TaskHistory | null>(null);
-  const [feedLoading, setFeedLoading] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [thread, setThread] = useState<ChoreThread | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
   const [voteStatus, setVoteStatus] = useState<TaskVoteStatus | null>(null);
-  const [tab, setTab] = useState<DetailTab>('overview');
+  const [tab, setTab] = useState<DetailTab>(initialTab);
 
   const isAssignee = detailTask?.assignedTo === currentUserId;
   const assigneeMember = useMemo(
@@ -97,24 +97,14 @@ export default function TaskDetailsModal({
     }
   }, [task]);
 
-  const loadFeed = useCallback(() => {
+  const loadThread = useCallback(() => {
     if (!task?.id) return;
-    setFeedLoading(true);
+    setThreadLoading(true);
     tasksApi
-      .getFeed(task.id)
-      .then((res) => setFeed(res.data.data))
-      .catch(() => setFeed(null))
-      .finally(() => setFeedLoading(false));
-  }, [task?.id]);
-
-  const loadHistory = useCallback(() => {
-    if (!task?.id) return;
-    setHistoryLoading(true);
-    tasksApi
-      .getHistory(task.id)
-      .then((res) => setHistory(res.data.data))
-      .catch(() => setHistory(null))
-      .finally(() => setHistoryLoading(false));
+      .getThread(task.id)
+      .then((res) => setThread(res.data.data))
+      .catch(() => setThread(null))
+      .finally(() => setThreadLoading(false));
   }, [task?.id]);
 
   useTaskPolling(
@@ -124,30 +114,27 @@ export default function TaskDetailsModal({
       setVoteStatus(vs);
       if (vs.votingComplete) {
         refreshDetail();
-        loadFeed();
-        loadHistory();
+        loadThread();
       }
     },
   );
 
   useEffect(() => {
     setDetailTask(task);
-    setTab('overview');
+    setTab(initialTab);
     if (!task) {
-      setFeed(null);
-      setHistory(null);
+      setThread(null);
       setVoteStatus(null);
       return;
     }
     refreshDetail();
-    loadFeed();
-    loadHistory();
+    loadThread();
     if (task.status === 'submitted') {
       tasksApi.getVotes(task.id).then((res) => setVoteStatus(res.data.data)).catch(() => {});
     } else {
       setVoteStatus(null);
     }
-  }, [task?.id, task?.status, refreshDetail, loadFeed, loadHistory]);
+  }, [task?.id, task?.status, initialTab, refreshDetail, loadThread]);
 
   const canVote =
     detailTask?.status === 'submitted' &&
@@ -161,6 +148,10 @@ export default function TaskDetailsModal({
     ['pending', 'submitted', 'disputed'].includes(detailTask.status);
 
   const submission = detailTask?.currentSubmission;
+  const cycleLabel =
+    detailTask?.cycleNumber != null
+      ? `Cycle ${detailTask.cycleNumber}${thread ? ` · ${thread.cycles.length - 1} prior` : ''}`
+      : null;
 
   const footer = detailTask ? (
     <div className="flex flex-wrap justify-end gap-2">
@@ -229,13 +220,15 @@ export default function TaskDetailsModal({
     >
       {detailTask && (
         <div className="space-y-5">
-          {/* Compact header row */}
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[detailTask.status] ?? STATUS_STYLES.pending}`}
             >
               {detailTask.status}
             </span>
+            {cycleLabel && (
+              <span className="text-xs font-medium text-neutral-500">{cycleLabel}</span>
+            )}
             <span className="text-sm text-neutral-500">
               {isAssignee ? 'Assigned to you' : assigneeName}
               {assigneeMember?.role && (
@@ -255,13 +248,11 @@ export default function TaskDetailsModal({
             </span>
           </div>
 
-          {/* Tabs */}
           <div className="flex gap-1 border-b border-neutral-200">
             {(
               [
                 { id: 'overview' as const, label: 'Overview' },
-                { id: 'history' as const, label: 'History' },
-                { id: 'discussion' as const, label: 'Discussion' },
+                { id: 'thread' as const, label: 'Thread' },
               ] as const
             ).map(({ id, label }) => (
               <button
@@ -275,17 +266,18 @@ export default function TaskDetailsModal({
                 }`}
               >
                 {label}
-                {id === 'history' && (history?.rounds.length ?? 0) > 0 && (
-                  <span className="ml-1.5 text-xs text-neutral-400">({history!.rounds.length})</span>
+                {id === 'thread' && (thread?.cycles.length ?? 0) > 0 && (
+                  <span className="ml-1.5 text-xs text-neutral-400">
+                    ({thread!.cycles.length} cycle{thread!.cycles.length !== 1 ? 's' : ''})
+                  </span>
                 )}
               </button>
             ))}
           </div>
 
-          {/* Tab panels */}
           {tab === 'overview' && (
             <div className="space-y-6">
-              {(submission || detailTask.status === 'submitted' || detailTask.status === 'disputed') ? (
+              {submission || detailTask.status === 'submitted' || detailTask.status === 'disputed' ? (
                 <div className="rounded-xl border border-neutral-200 p-5">
                   <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Current submission
@@ -295,9 +287,6 @@ export default function TaskDetailsModal({
                       <div>
                         <span className="text-neutral-500">Submitted by </span>
                         <span className="font-medium text-neutral-900">{assigneeName}</span>
-                        {assigneeMember?.role && (
-                          <span className="ml-1 capitalize text-neutral-400">({assigneeMember.role})</span>
-                        )}
                       </div>
                       {submission?.createdAt && (
                         <div className="text-neutral-600">
@@ -321,7 +310,10 @@ export default function TaskDetailsModal({
                         </p>
                       )}
                     </div>
-                    <ProofImage task={detailTask} className="aspect-video w-full rounded-xl border border-neutral-200 object-cover" />
+                    <ProofImage
+                      task={detailTask}
+                      className="aspect-video w-full rounded-xl border border-neutral-200 object-cover"
+                    />
                   </div>
                 </div>
               ) : (
@@ -352,21 +344,15 @@ export default function TaskDetailsModal({
             </div>
           )}
 
-          {tab === 'history' && (
-            <div>
-              <SubmissionTimeline history={history} loading={historyLoading} />
-            </div>
-          )}
-
-          {tab === 'discussion' && (
-            <ChoreFeed
+          {tab === 'thread' && (
+            <ChoreThreadView
+              thread={thread}
+              loading={threadLoading}
               taskId={detailTask.id}
-              feed={feed}
-              loading={feedLoading}
               currentUserId={currentUserId}
               isAdmin={isAdmin}
-              onRefresh={loadFeed}
-              hideSubmissionItems
+              voteStatus={voteStatus}
+              onRefresh={loadThread}
             />
           )}
         </div>
