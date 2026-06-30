@@ -1,4 +1,5 @@
 'use client';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -78,52 +79,50 @@ export default function LoginPage() {
     }
   };
 
+  const inputClass = (hasError: boolean) =>
+    `w-full h-12 rounded-lg border bg-white/[0.03] px-4 text-base text-landing-fg placeholder-landing-dim focus:ring-1 focus:bg-white/[0.05] transition-all ${
+      hasError
+        ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/30'
+        : 'border-white/10 focus:border-white/30 focus:ring-white/10'
+    }`;
+
   return (
     <>
-      {/* Left: Form */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center px-6 sm:px-12 md:px-24 xl:px-32 bg-white relative overflow-y-auto">
-        <div className="w-full max-w-md mx-auto py-10">
-          {/* Heading */}
-          <div className="mb-10">
-            <h1 className="text-3xl font-extrabold tracking-tight text-[#111827] mb-3">Welcome Back</h1>
-            <p className="text-[#374151] text-lg">Streamline your shared living experience.</p>
+      <div className="flex w-full flex-col justify-center px-6 py-12 sm:px-12 lg:w-1/2 lg:px-16 xl:px-24">
+        <div className="mx-auto w-full max-w-md">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold tracking-tight text-landing-fg mb-2">Welcome back</h1>
+            <p className="text-landing-muted">Sign in to your Roomies account.</p>
           </div>
 
-          {/* Tab bar */}
-          <div className="flex border-b border-[#e5e7eb] mb-8">
-            <button className="flex-1 pb-3 pt-2 text-center text-[#2563eb] border-b-2 border-[#2563eb] font-bold text-sm tracking-wide">
+          <div className="flex border-b border-white/10 mb-8">
+            <span className="flex-1 pb-3 text-center text-sm font-semibold text-landing-fg border-b-2 border-landing-fg">
               Login
-            </button>
+            </span>
             <Link
               href="/register"
-              className="flex-1 pb-3 pt-2 text-center text-[#374151] hover:text-[#111827] border-b-2 border-transparent hover:border-[#e5e7eb] font-bold text-sm tracking-wide transition-all"
+              className="flex-1 pb-3 text-center text-sm font-semibold text-landing-muted hover:text-landing-fg border-b-2 border-transparent transition-colors"
             >
-              Sign Up
+              Sign up
             </Link>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             {error && (
               <div
                 id="login-error"
                 role="alert"
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
               >
                 {error}
               </div>
             )}
 
-            {/* Email */}
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-semibold text-[#111827]">Email Address</span>
+              <span className="text-sm font-medium text-landing-fg">Email</span>
               <div className="relative group">
                 <input
-                  className={`w-full h-12 rounded-lg border bg-[#f9fafb] px-4 text-base text-[#111827] placeholder-gray-400 focus:ring-1 focus:bg-white transition-all shadow-sm ${
-                    emailError || highlightBothFields
-                      ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                      : 'border-[#e5e7eb] focus:border-[#2563eb] focus:ring-[#2563eb]'
-                  }`}
+                  className={inputClass(!!(emailError || highlightBothFields))}
                   placeholder="name@domain.com"
                   type="email"
                   value={email}
@@ -135,25 +134,20 @@ export default function LoginPage() {
                   aria-invalid={emailError || highlightBothFields ? true : undefined}
                   aria-describedby={emailError ? 'email-error' : error && highlightBothFields ? 'login-error' : undefined}
                 />
-                <Icon name="mail" size={20} className="absolute right-3 top-3 text-gray-400 group-focus-within:text-[#2563eb] transition-colors select-none pointer-events-none" />
+                <Icon name="mail" size={20} className="absolute right-3 top-3 text-landing-dim group-focus-within:text-landing-muted transition-colors pointer-events-none" />
               </div>
               {emailError && (
-                <p id="email-error" role="alert" className="text-sm text-red-600">
+                <p id="email-error" role="alert" className="text-sm text-red-400">
                   {emailError}
                 </p>
               )}
             </label>
 
-            {/* Password */}
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-semibold text-[#111827]">Password</span>
+              <span className="text-sm font-medium text-landing-fg">Password</span>
               <div className="relative group">
                 <input
-                  className={`w-full h-12 rounded-lg border bg-[#f9fafb] px-4 text-base text-[#111827] placeholder-gray-400 focus:ring-1 focus:bg-white transition-all shadow-sm ${
-                    passwordError || highlightBothFields
-                      ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                      : 'border-[#e5e7eb] focus:border-[#2563eb] focus:ring-[#2563eb]'
-                  }`}
+                  className={inputClass(!!(passwordError || highlightBothFields))}
                   placeholder="Enter your password"
                   type={showPw ? 'text' : 'password'}
                   value={password}
@@ -168,87 +162,75 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-3 text-gray-400 cursor-pointer hover:text-[#111827] transition-colors"
+                  className="absolute right-3 top-3 text-landing-dim hover:text-landing-fg transition-colors"
                 >
                   <Icon name={showPw ? 'visibility' : 'visibility_off'} size={20} />
                 </button>
               </div>
               {passwordError && (
-                <p id="password-error" role="alert" className="text-sm text-red-600">
+                <p id="password-error" role="alert" className="text-sm text-red-400">
                   {passwordError}
                 </p>
               )}
               <div className="flex justify-between items-center mt-1">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input className="rounded border-gray-300 text-[#2563eb] focus:ring-[#2563eb]" type="checkbox" />
-                  <span className="text-xs font-medium text-[#374151]">Remember me</span>
+                  <input className="rounded border-white/20 bg-white/5 text-landing-fg focus:ring-white/20" type="checkbox" />
+                  <span className="text-xs text-landing-muted">Remember me</span>
                 </label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs font-semibold text-[#2563eb] hover:text-blue-700 underline underline-offset-2 transition-all"
+                  className="text-xs font-medium text-landing-muted hover:text-landing-fg transition-colors"
                 >
                   Forgot password?
                 </Link>
               </div>
             </label>
 
-            {/* Submit */}
             <button
-              className="mt-2 flex h-12 w-full items-center justify-center rounded-lg bg-[#2563eb] hover:bg-blue-700 text-white font-bold text-base transition-all shadow-sm hover:shadow-md active:scale-[0.99] disabled:opacity-60"
+              className="mt-1 flex h-11 w-full items-center justify-center rounded-full bg-landing-fg text-landing-bg font-semibold text-sm transition-all hover:bg-white disabled:opacity-60"
               type="submit"
               disabled={loading}
             >
-              {loading ? 'Signing in…' : 'Sign In'}
+              {loading ? 'Signing in…' : 'Sign in'}
             </button>
 
-            {/* Divider */}
             <div className="relative flex py-2 items-center">
-              <div className="flex-grow border-t border-[#e5e7eb]" />
-              <span className="flex-shrink mx-4 text-[#374151] text-xs font-medium uppercase tracking-wider">Or continue with</span>
-              <div className="flex-grow border-t border-[#e5e7eb]" />
+              <div className="grow border-t border-white/10" />
+              <span className="shrink mx-4 text-landing-dim text-xs uppercase tracking-wider">Or</span>
+              <div className="grow border-t border-white/10" />
             </div>
 
-            {/* Google OAuth */}
             <GoogleSignInButton
               disabled={loading}
               onSuccess={handleGoogleSuccess}
               onError={setError}
             />
 
-            <p className="text-center text-sm text-[#374151] mt-6">
+            <p className="text-center text-sm text-landing-muted">
               Don&apos;t have an account?{' '}
-              <Link href="/register" className="font-bold text-[#2563eb] hover:text-blue-700 hover:underline">Sign up for free</Link>
+              <Link href="/register" className="font-semibold text-landing-fg hover:underline">
+                Sign up
+              </Link>
             </p>
           </form>
         </div>
       </div>
 
-      {/* Right: Decorative panel */}
-      <div className="hidden lg:flex w-1/2 relative bg-[#f9fafb] overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <div className="h-full w-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/90 via-transparent to-transparent" />
-        </div>
-        <div className="relative z-10 mt-auto p-16 w-full text-white">
-          <div className="bg-[#111827]/60 backdrop-blur-md rounded-xl p-8 border border-white/10 shadow-2xl max-w-lg">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="flex h-2.5 w-2.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(22,163,74,0.6)]" />
-              <span className="text-xs font-bold uppercase tracking-widest text-white/90">Customer Success</span>
+      <div className="hidden lg:flex lg:w-1/2 items-center justify-center border-l border-white/[0.06] p-16">
+        <blockquote className="max-w-lg">
+          <p className="text-2xl font-bold leading-snug text-landing-fg">
+            &ldquo;Roomies transformed how we handle bills. No more awkward conversations at the end of the month.&rdquo;
+          </p>
+          <footer className="mt-8 flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-lg font-bold ring-2 ring-white/10">
+              S
             </div>
-            <h3 className="text-2xl font-bold leading-snug mb-4">
-              &ldquo;Roomies transformed how we handle bills. No more awkward conversations at the end of the month.&rdquo;
-            </h3>
-            <div className="flex items-center gap-4 mt-6 pt-6 border-t border-white/10">
-              <div className="h-12 w-12 rounded-full bg-slate-700 flex items-center justify-center ring-2 ring-white/20 text-lg font-bold">
-                S
-              </div>
-              <div>
-                <p className="font-bold text-sm text-white">Sarah Jenkins</p>
-                <p className="text-xs text-white/70 font-medium">San Francisco, CA</p>
-              </div>
+            <div>
+              <p className="font-semibold text-sm text-landing-fg">Sarah Jenkins</p>
+              <p className="text-xs text-landing-muted">San Francisco, CA</p>
             </div>
-          </div>
-        </div>
+          </footer>
+        </blockquote>
       </div>
     </>
   );

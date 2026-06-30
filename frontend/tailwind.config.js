@@ -31,6 +31,13 @@ module.exports = {
         'status-rejected':  '#ef4444',
         'status-expired':   '#f97316',
         'status-disputed':  '#eab308',
+        'landing-bg':       '#000000',
+        'landing-surface':  '#0a0a0a',
+        'landing-fg':       '#ffffff',
+        'landing-muted':    '#a3a3a3',
+        'landing-dim':      '#737373',
+        'landing-border':   'rgba(255,255,255,0.1)',
+        'landing-border-subtle': 'rgba(255,255,255,0.08)',
       },
       boxShadow: {
         card:    '0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07)',
