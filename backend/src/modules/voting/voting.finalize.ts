@@ -4,7 +4,7 @@
 
 import type { Prisma } from '@prisma/client';
 import * as penaltyService from '../penalty/penalty.service';
-import { env } from '../../shared/utils/env';
+import { maxSubmissionAttempts, DISPUTE_GRACE_MS } from '../tasks/task-limits';
 import { logger } from '../../shared/utils/logger';
 
 type TxClient = Omit<
@@ -54,6 +54,7 @@ export async function finalizeTaskVotingIfComplete(
       houseId: true,
       assignedTo: true,
       status: true,
+      deadline: true,
       rewardPoints: true,
       penaltyFine: true,
       currentSubmissionId: true,
@@ -69,7 +70,7 @@ export async function finalizeTaskVotingIfComplete(
     return {
       finalized: false,
       newStatus: task.status,
-      shouldRotate: task.status === 'completed',
+      shouldRotate: task.status === 'completed' || task.status === 'rejected',
       actionMsg: `Task already in state ${task.status}`,
     };
   }
@@ -95,7 +96,12 @@ export async function finalizeTaskVotingIfComplete(
   });
   const eligibleVoters = Math.max(0, totalActiveMembers - 1);
   const majorityThreshold = computeMajority(eligibleVoters);
-  const maxAttempts = env.TASK_MAX_RESUBMISSIONS;
+  // Attempt 1 is the original submission; TASK_MAX_RESUBMISSIONS more are allowed.
+  const maxAttempts = maxSubmissionAttempts();
+  // Disputed tasks expire at their deadline, so guarantee time to resubmit.
+  const disputeDeadline = new Date(
+    Math.max(task.deadline.getTime(), Date.now() + DISPUTE_GRACE_MS),
+  );
   const taskRewardPoints = task.rewardPoints;
   const taskPenaltyFine = Number(task.penaltyFine);
 
@@ -142,11 +148,12 @@ export async function finalizeTaskVotingIfComplete(
         );
       }
       newStatus = 'rejected';
+      shouldRotate = true; // recurring chores move on to the next cycle
       actionMsg = 'Task rejected — max resubmission attempts exhausted';
     } else {
       await tx.task.updateMany({
         where: { id: taskId, status: 'submitted' },
-        data: { status: 'disputed' },
+        data: { status: 'disputed', deadline: disputeDeadline },
       });
       newStatus = 'disputed';
       actionMsg = 'Task disputed';
@@ -169,11 +176,12 @@ export async function finalizeTaskVotingIfComplete(
         );
       }
       newStatus = 'rejected';
+      shouldRotate = true;
       actionMsg = 'Task rejected (tie)';
     } else {
       await tx.task.updateMany({
         where: { id: taskId, status: 'submitted' },
-        data: { status: 'disputed' },
+        data: { status: 'disputed', deadline: disputeDeadline },
       });
       newStatus = 'disputed';
       actionMsg = 'Task disputed (tie)';

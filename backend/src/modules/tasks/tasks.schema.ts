@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { MAX_REWARD_POINTS, MAX_PENALTY_FINE, MAX_TASK_WEIGHT } from './task-limits';
 
 // ---- Assign Task ----
 
@@ -18,9 +19,9 @@ export const assignTaskSchema = z.object({
     .trim(),
   deadline: z.string().datetime({ message: 'Deadline must be a valid ISO 8601 datetime' }),
   assignedTo: z.string().uuid('Invalid user ID').optional(),
-  rewardPoints: z.number().int().positive().optional(),
-  penaltyFine: z.number().positive().optional(),
-  weight: z.number().int().positive().optional(),
+  rewardPoints: z.number().int().positive().max(MAX_REWARD_POINTS).optional(),
+  penaltyFine: z.number().positive().max(MAX_PENALTY_FINE).multipleOf(0.01).optional(),
+  weight: z.number().int().min(1).max(MAX_TASK_WEIGHT).optional(),
   isRecurring: z.boolean().optional(),
   cronSchedule: z.string().optional(),
 });
@@ -72,8 +73,8 @@ export const updateTaskSchema = z
     title: z.string().min(2).max(200).trim().optional(),
     deadline: z.string().datetime({ message: 'Deadline must be a valid ISO 8601 datetime' }).optional(),
     assignedTo: z.string().uuid('Invalid user ID').optional(),
-    rewardPoints: z.number().int().positive().optional(),
-    penaltyFine: z.number().positive().optional(),
+    rewardPoints: z.number().int().positive().max(MAX_REWARD_POINTS).optional(),
+    penaltyFine: z.number().positive().max(MAX_PENALTY_FINE).multipleOf(0.01).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, {
     message: 'At least one field must be provided for update',

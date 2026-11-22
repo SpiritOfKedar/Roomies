@@ -26,7 +26,8 @@ export default function ResubmitModal({
   const [submitting, setSubmitting] = useState(false);
 
   const attemptNumber = task?.currentSubmission?.attemptNumber ?? 0;
-  const attemptsRemaining = Math.max(0, maxResubmissions - attemptNumber);
+  // Attempt 1 was the original submission, so (attemptNumber - 1) retries are used.
+  const attemptsRemaining = Math.max(0, maxResubmissions - Math.max(0, attemptNumber - 1));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

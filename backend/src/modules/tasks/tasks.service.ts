@@ -46,6 +46,7 @@ import * as commentsRepo from './task-comments.repository';
 import { logTaskActivity } from './task-activity.service';
 import { buildTaskFeed } from './task-feed.service';
 import { buildChoreThread } from './chore-thread.service';
+import { maxSubmissionAttempts } from './task-limits';
 import {
   cached,
   houseTasksKey,
@@ -378,8 +379,16 @@ export interface RotationResult {
   assigneeName?: string;
 }
 
+/** Instance states after which a recurring chore moves on to its next cycle. */
+const ROTATABLE_STATUSES = ['completed', 'expired', 'rejected'];
+
 /**
- * After a task is completed, spawn the next pending instance for the same chore.
+ * After a chore instance reaches a terminal state (completed, expired or
+ * rejected), spawn the next pending instance for the same recurring chore.
+ *
+ * - completed: the completer is excluded from the immediate re-assign.
+ * - expired / rejected: nobody is excluded; the fairness score decides, so a
+ *   member cannot dodge a chore simply by letting it lapse.
  */
 export async function completeAndRotateTask(completedTaskId: string): Promise<RotationResult> {
   const completed = await prisma.task.findUnique({
@@ -388,6 +397,7 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
       id: true,
       houseId: true,
       choreId: true,
+      cycleNumber: true,
       assignedTo: true,
       title: true,
       status: true,
@@ -412,8 +422,8 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
   if (!completed) {
     return { rotated: false, reason: 'task_not_found' };
   }
-  if (completed.status !== 'completed') {
-    return { rotated: false, reason: 'not_completed', skipped: true };
+  if (!ROTATABLE_STATUSES.includes(completed.status)) {
+    return { rotated: false, reason: 'not_terminal', skipped: true };
   }
   if (completed.rotationSpawnedAt) {
     return { rotated: false, reason: 'already_rotated', skipped: true };
@@ -426,6 +436,19 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
     });
     await invalidateHouseCache(completed.houseId);
     return { rotated: false, reason: 'not_recurring', skipped: true };
+  }
+
+  // A later cycle already exists (e.g. an admin re-created the chore by hand):
+  // this instance has been superseded and must not spawn another one.
+  const newerCycle = await prisma.task.count({
+    where: { choreId: completed.choreId, cycleNumber: { gt: completed.cycleNumber } },
+  });
+  if (newerCycle > 0) {
+    await prisma.task.update({
+      where: { id: completedTaskId },
+      data: { rotationSpawnedAt: new Date() },
+    });
+    return { rotated: false, reason: 'superseded', skipped: true };
   }
 
   const openDuplicate = await prisma.task.count({
@@ -484,7 +507,7 @@ export async function completeAndRotateTask(completedTaskId: string): Promise<Ro
       isRecurring,
       cronSchedule: choreCron,
       rotationOptions: {
-        excludeUserId: completed.assignedTo,
+        excludeUserId: completed.status === 'completed' ? completed.assignedTo : undefined,
         choreTitle: completed.title,
         choreId: completed.choreId,
         spawnedFromTaskId: completedTaskId,
@@ -588,14 +611,15 @@ export async function submitTask(
   });
 
   const isSoloHouse = activeMembersCount <= 1;
-  const maxAttempts = env.TASK_MAX_RESUBMISSIONS;
+  // Attempt 1 is the original submission; TASK_MAX_RESUBMISSIONS more are allowed.
+  const maxAttempts = maxSubmissionAttempts();
 
   const latestSubmission = await submissionsRepo.getLatestSubmission(taskId);
   const nextAttemptNumber = (latestSubmission?.attemptNumber ?? 0) + 1;
 
   if (nextAttemptNumber > maxAttempts) {
     throw new AppError(
-      `Maximum resubmission attempts (${maxAttempts}) reached for this task`,
+      `Maximum resubmissions (${env.TASK_MAX_RESUBMISSIONS}) reached for this task`,
       400,
     );
   }
@@ -740,9 +764,11 @@ export async function getTaskById(userId: string, taskId: string) {
   return {
     ...task,
     maxResubmissions: env.TASK_MAX_RESUBMISSIONS,
+    maxAttempts: maxSubmissionAttempts(),
+    // Submissions still allowed (the original counts as attempt 1)
     attemptsRemaining: Math.max(
       0,
-      env.TASK_MAX_RESUBMISSIONS - (task.currentSubmission?.attemptNumber ?? 0),
+      maxSubmissionAttempts() - (task.currentSubmission?.attemptNumber ?? 0),
     ),
   };
 }

@@ -51,7 +51,7 @@ export function startRecurringTasksWorker(): void {
 
       const missedRotations = await prisma.task.findMany({
         where: {
-          status: 'completed',
+          status: { in: ['completed', 'expired', 'rejected'] },
           rotationSpawnedAt: null,
           chore: { isRecurring: true },
         },

@@ -166,7 +166,7 @@ export default function ExpenseList({
                           <span className="text-sm font-bold text-neutral-900">
                             {formatINR(split.amount)}
                           </span>
-                          {split.owedBy === currentUserId && !settled && (
+                          {exp.paidBy === currentUserId && split.owedBy !== currentUserId && !settled && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -175,7 +175,7 @@ export default function ExpenseList({
                               }}
                               className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-neutral-800"
                             >
-                              Mark paid
+                              Mark received
                             </button>
                           )}
                         </div>

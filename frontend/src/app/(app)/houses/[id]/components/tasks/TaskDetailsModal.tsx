@@ -329,7 +329,9 @@ export default function TaskDetailsModal({
                   <p className="text-xs text-neutral-400">Attempts</p>
                   <p className="font-medium">
                     {submission?.attemptNumber ?? 0}
-                    {detailTask.maxResubmissions != null && ` / ${detailTask.maxResubmissions}`}
+                    {detailTask.maxAttempts != null
+                      ? ` / ${detailTask.maxAttempts}`
+                      : detailTask.maxResubmissions != null && ` / ${detailTask.maxResubmissions + 1}`}
                   </p>
                 </div>
                 <div>

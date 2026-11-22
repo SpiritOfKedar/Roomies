@@ -82,7 +82,7 @@ async function selfHealStuckSubmission(taskId: string): Promise<{
   }
 
   let rotation: RotationResult | undefined;
-  if (healResult.shouldRotate && healResult.newStatus === 'completed') {
+  if (healResult.shouldRotate) {
     rotation = await maybeRotateAfterComplete(taskId);
   }
 
@@ -226,7 +226,7 @@ export async function castVote(
   });
 
   let rotation: RotationResult | undefined;
-  if (result.shouldRotate && result.finalStatus === 'completed') {
+  if (result.shouldRotate) {
     rotation = await maybeRotateAfterComplete(taskId);
   }
 

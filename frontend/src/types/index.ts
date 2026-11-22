@@ -99,6 +99,8 @@ export interface Task {
   currentSubmissionId?: string | null;
   currentSubmission?: TaskSubmission | null;
   maxResubmissions?: number;
+  /** Total submissions allowed: the original + maxResubmissions retries */
+  maxAttempts?: number;
   attemptsRemaining?: number;
 }
 

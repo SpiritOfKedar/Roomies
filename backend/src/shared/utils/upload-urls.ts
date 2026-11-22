@@ -102,6 +102,10 @@ export function requireSignedUpload(req: Request, res: Response, next: NextFunct
     return;
   }
 
+  // The frontend runs on a different origin (and often a different site in
+  // production), so helmet's default CORP "same-origin" would make browsers
+  // refuse to render these images. Access is already gated by the signature.
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   // Private: never let a shared proxy cache a member-only image.
   res.setHeader('Cache-Control', `private, max-age=${Math.min(exp - nowSec, 3600)}`);
   next();

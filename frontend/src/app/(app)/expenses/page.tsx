@@ -232,12 +232,12 @@ export default function ExpensesPage() {
                             {split.status === 'settled' ? 'Settled' : 'Unpaid'}
                           </span>
                           <span className="text-sm font-bold text-[#171717]">{formatINR(split.amount)}</span>
-                          {split.owedBy === user?.id && split.status !== 'settled' && (
+                          {exp.paidBy === user?.id && split.owedBy !== user?.id && split.status !== 'settled' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleSettle(exp, split.id); }}
                               className="btn-primary !py-1.5 !px-3 !text-xs"
                             >
-                              Settle
+                              Mark received
                             </button>
                           )}
                         </div>

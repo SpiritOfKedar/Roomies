@@ -77,11 +77,19 @@ export async function createExpense(
 
     const memberIds = activeMembers.map((m) => m.userId);
 
-    // 3. Compute per-person split with Decimal precision (round to 2dp)
+    // 3. Split in whole cents so the shares always add up to the total.
+    //    Leftover cents go one each to the first members in order — payer
+    //    first, since their own share is pre-settled — so no debtor is
+    //    ever charged more than one cent above an even split.
     const totalDecimal = new Prisma.Decimal(amount);
-    const splitAmount = totalDecimal
-      .div(new Prisma.Decimal(memberIds.length))
-      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+    const totalCents = totalDecimal.mul(100).toDecimalPlaces(0).toNumber();
+    const baseCents = Math.floor(totalCents / memberIds.length);
+    const leftoverCents = totalCents - baseCents * memberIds.length;
+    const ordered = [userId, ...memberIds.filter((id) => id !== userId)];
+    const splits = ordered.map((owedBy, i) => ({
+      owedBy,
+      amount: new Prisma.Decimal(baseCents + (i < leftoverCents ? 1 : 0)).div(100),
+    }));
 
     // 4+5. Create expense + splits atomically
     return expenseRepo.createExpenseWithSplits(tx, {
@@ -90,8 +98,7 @@ export async function createExpense(
       amount: totalDecimal,
       description,
       receiptUrl,
-      memberIds,
-      splitAmount,
+      splits,
     });
   });
 
@@ -140,13 +147,13 @@ export async function settleExpenseSplit(callerId: string, houseId: string, spli
     throw ConflictError(`Split is already '${split.status}' and cannot be settled again`);
   }
 
-  // 3. Authorization: owedBy or payer
-  const isOwedBy = split.owedBy === callerId;
-  const isPayer = split.expense.paidBy === callerId;
-
-  if (!isOwedBy && !isPayer) {
-    throw ForbiddenError('Only the member who owes this split or the expense payer can settle it');
+  // 3. Authorization: only the payer can confirm they were paid back.
+  //    (A debtor marking their own debt as paid would be self-certifying.)
+  if (split.expense.paidBy !== callerId) {
+    throw ForbiddenError('Only the member who paid this expense can mark a share as settled');
   }
+
+  await houseService.verifyMembership(houseId, callerId);
 
   // 4. Settle (updateMany guards against race conditions)
   const updated = await expenseRepo.settleSplit(splitId);

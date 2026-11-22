@@ -80,8 +80,8 @@ export async function createExpenseWithSplits(
     amount: Prisma.Decimal | number;
     description: string;
     receiptUrl?: string;
-    memberIds: string[];
-    splitAmount: Prisma.Decimal;
+    /** One share per active member (payer included); amounts sum to `amount`. */
+    splits: { owedBy: string; amount: Prisma.Decimal }[];
   },
 ): Promise<ExpenseRecord> {
   const expense = await tx.expense.create({
@@ -92,11 +92,11 @@ export async function createExpenseWithSplits(
       description: data.description,
       receiptUrl: data.receiptUrl ?? null,
       splits: {
-        create: data.memberIds.map((memberId) => ({
-          owedBy: memberId,
-          amount: data.splitAmount,
+        create: data.splits.map((s) => ({
+          owedBy: s.owedBy,
+          amount: s.amount,
           // Payer's own share is already settled — they fronted the money
-          status: memberId === data.paidBy ? 'settled' : 'unpaid',
+          status: s.owedBy === data.paidBy ? 'settled' : 'unpaid',
         })),
       },
     },

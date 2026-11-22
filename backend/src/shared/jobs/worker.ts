@@ -4,8 +4,87 @@ import * as penaltyService from '../../modules/penalty/penalty.service';
 import { logger } from '../utils/logger';
 import { redisConnection } from './queue';
 import { reconcileSubmittedTasks } from '../../modules/voting/voting.service';
+import { completeAndRotateTask } from '../../modules/tasks/tasks.service';
+import { invalidateHouseCache } from '../cache/redis-cache';
 
 let taskSweeperWorker: Worker | null = null;
+
+/**
+ * Statuses that expire at the deadline:
+ *   - pending:  never submitted.
+ *   - disputed: proof rejected and not resubmitted in time. (Disputes always
+ *               leave at least DISPUTE_GRACE_MS to resubmit — see voting.finalize.)
+ * 'submitted' is deliberately excluded: the assignee did their part and is
+ * waiting on roommates' votes, so they are not penalised for that delay.
+ */
+const EXPIRABLE_STATUSES = ['pending', 'disputed'];
+
+/**
+ * Expire overdue tasks, penalise the assignee with the task's own points/fine,
+ * and rotate recurring chores on to their next cycle.
+ */
+export async function sweepExpiredTasks(): Promise<{ expired: number; rotated: number }> {
+  const overdue = await prisma.task.findMany({
+    where: { deadline: { lt: new Date() }, status: { in: EXPIRABLE_STATUSES } },
+    select: {
+      id: true,
+      houseId: true,
+      assignedTo: true,
+      status: true,
+      rewardPoints: true,
+      penaltyFine: true,
+    },
+  });
+
+  let expired = 0;
+  let rotated = 0;
+  const touchedHouses = new Set<string>();
+
+  // One small transaction per task — avoids a single giant tx timing out on Neon
+  // and ensures a failure on one task never rolls back the others.
+  for (const task of overdue) {
+    try {
+      const didExpire = await prisma.$transaction(
+        async (tx: Parameters<typeof penaltyService.applyPenalty>[0]) => {
+          // Conditional on the status we read, so a concurrent submit/vote wins.
+          const updateResult = await tx.task.updateMany({
+            where: { id: task.id, status: task.status },
+            data: { status: 'expired', currentSubmissionId: null },
+          });
+          if (updateResult.count === 0) return false;
+
+          await penaltyService.applyPenalty(
+            tx,
+            task.assignedTo,
+            task.id,
+            task.status === 'disputed'
+              ? 'Disputed task was not resubmitted before the deadline'
+              : 'Task deadline expired without completion',
+            task.rewardPoints,
+            Number(task.penaltyFine),
+          );
+          return true;
+        },
+      );
+      if (!didExpire) continue;
+
+      expired++;
+      touchedHouses.add(task.houseId);
+
+      // Recurring chores move on to the next cycle; one-off chores are marked done.
+      const rotation = await completeAndRotateTask(task.id);
+      if (rotation.rotated) rotated++;
+    } catch (err) {
+      logger.error({ err, taskId: task.id }, 'Task Sweeper: failed to expire task');
+    }
+  }
+
+  for (const houseId of touchedHouses) {
+    await invalidateHouseCache(houseId);
+  }
+
+  return { expired, rotated };
+}
 
 export function startTaskSweeperWorker() {
   logger.info('Initializing BullMQ Task Sweeper Worker');
@@ -24,51 +103,11 @@ export function startTaskSweeperWorker() {
         logger.info(`Task Sweeper [${job.id}]: Reconciled ${reconciled} stuck submission(s).`);
       }
 
-      const expiredTasks = await prisma.task.findMany({
-        where: {
-          deadline: { lt: new Date() }, // Past deadline
-          status: 'pending', // Still pending
-        },
-      });
-
-      if (expiredTasks.length === 0) {
-        logger.debug(`Task Sweeper [${job.id}]: No expired tasks found.`);
-        return { message: 'No tasks to process' };
-      }
-
+      const result = await sweepExpiredTasks();
       logger.info(
-        `Task Sweeper [${job.id}]: Found ${expiredTasks.length} expired tasks. Applying penalties...`,
+        `Task Sweeper [${job.id}]: expired ${result.expired} task(s), rotated ${result.rotated} recurring chore(s).`,
       );
-
-      // One small transaction per task — avoids a single giant tx timing out on Neon
-      // and ensures a failure on one task never rolls back the others.
-      let processed = 0;
-      for (const task of expiredTasks) {
-        await prisma.$transaction(async (tx: Parameters<typeof penaltyService.applyPenalty>[0]) => {
-          // Update task status to expired ONLY if it's still 'pending'
-          const updateResult = await tx.task.updateMany({
-            where: { id: task.id, status: 'pending' },
-            data: { status: 'expired' },
-          });
-
-          if (updateResult.count > 0) {
-            processed++;
-            await penaltyService.applyPenalty(
-              tx,
-              task.assignedTo,
-              task.id,
-              'Task deadline expired without completion',
-              10, // 10 points
-              50.0, // $50 fine
-            );
-          }
-        });
-      }
-
-      logger.info(
-        `Task Sweeper [${job.id}]: Successfully processed ${processed} of ${expiredTasks.length} expired tasks.`,
-      );
-      return { processed };
+      return result;
     },
     {
       // @ts-expect-error: BullMQ and IORedis type definition mismatch
