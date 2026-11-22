@@ -557,5 +557,6 @@ ISC (see `backend/package.json`).
 
 UI components from third-party libraries, copied into the frontend with their notices intact (full license texts in [`frontend/THIRD_PARTY_NOTICES.md`](frontend/THIRD_PARTY_NOTICES.md)):
 
-- **[Rare UI](https://rareui.com)** by Swami Malode — hook sidebar, task list, delete button, notification bell, animated counter, duration picker and folder (`frontend/src/components/ui/rare/`).
+- **[Rare UI](https://rareui.com)** by Swami Malode — hook sidebar, rail TOC (app sidebar), task list, delete button, animated counter, duration picker and folder (`frontend/src/components/ui/rare/`).
+- **[React Bits](https://reactbits.dev)** by David Haz — comet dial, glide select, status mark and bell toggle (`frontend/src/components/ui/reactbits/`).
 - **[oxyn](https://oxyn.space)** by lokidotdev — dot-circle loader (`frontend/src/components/ui/oxyn/`).

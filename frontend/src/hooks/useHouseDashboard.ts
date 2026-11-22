@@ -6,9 +6,16 @@ import type { HouseDashboard } from '@/types';
 export function useHouseDashboard(
   houseId: string,
   statusFilter: 'active' | 'all' = 'active',
-  options?: { initialData?: HouseDashboard; enabled?: boolean },
+  options?: {
+    initialData?: HouseDashboard;
+    enabled?: boolean;
+    /** Poll (ms), including while the tab is in the background — used by house alerts */
+    pollMs?: number;
+  },
 ) {
   return useQuery({
+    refetchInterval: options?.pollMs ?? false,
+    refetchIntervalInBackground: !!options?.pollMs,
     queryKey: queryKeys.houseDashboard(houseId, statusFilter),
     queryFn: async () => {
       const res = await housesApi.dashboard(houseId, statusFilter);

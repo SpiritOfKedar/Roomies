@@ -3,7 +3,11 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/Modal';
+import Select from '@/components/ui/Select';
+import SubmitButton from '@/components/ui/SubmitButton';
 import DueDateTimeField from '@/components/turns/DueDateTimeField';
+import EffortDial from '@/components/turns/EffortDial';
+import { useActionStatus } from '@/hooks/useActionStatus';
 import { tasksApi } from '@/lib/endpoints';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { END_OF_DAY, toDeadlineISO, type TimeOfDay } from '@/lib/deadline';
@@ -18,10 +22,10 @@ interface Props {
 }
 
 const REPEAT_OPTIONS = [
-  { value: '', label: 'Does not repeat' },
-  { value: '0 0 * * *', label: 'Every day' },
-  { value: '0 0 * * 0', label: 'Every week' },
-  { value: '0 0 1 * *', label: 'Every month' },
+  { value: '', label: 'Does not repeat', tag: 'once' },
+  { value: '0 0 * * *', label: 'Every day', tag: 'daily' },
+  { value: '0 0 * * 0', label: 'Every week', tag: 'weekly' },
+  { value: '0 0 1 * *', label: 'Every month', tag: 'monthly' },
 ];
 
 export default function NewChoreModal({ open, onClose, houseId, members, onCreated }: Props) {
@@ -29,18 +33,23 @@ export default function NewChoreModal({ open, onClose, houseId, members, onCreat
   const [assignee, setAssignee] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState<TimeOfDay>(END_OF_DAY);
-  const [weight, setWeight] = useState(1);
+  const [weight, setWeight] = useState(3);
   const [repeat, setRepeat] = useState('');
-  const [saving, setSaving] = useState(false);
+  const { status, run } = useActionStatus();
 
-  const activeMembers = members.filter((m) => m.status === 'active');
+  const assigneeOptions = [
+    { value: '', label: 'Fairest pick', tag: 'auto' },
+    ...members
+      .filter((m) => m.status === 'active')
+      .map((m) => ({ value: m.userId, label: m.user?.name ?? 'Member', tag: m.role === 'admin' ? 'admin' : undefined })),
+  ];
 
   const reset = () => {
     setTitle('');
     setAssignee('');
     setDate('');
     setTime(END_OF_DAY);
-    setWeight(1);
+    setWeight(3);
     setRepeat('');
   };
 
@@ -51,24 +60,23 @@ export default function NewChoreModal({ open, onClose, houseId, members, onCreat
       toast.error('Pick a due time in the future');
       return;
     }
-    setSaving(true);
     try {
-      await tasksApi.assign(houseId, {
-        title: title.trim(),
-        deadline,
-        ...(assignee ? { assignedTo: assignee } : {}),
-        weight,
-        isRecurring: !!repeat,
-        ...(repeat ? { cronSchedule: repeat } : {}),
-      });
+      await run(() =>
+        tasksApi.assign(houseId, {
+          title: title.trim(),
+          deadline,
+          ...(assignee ? { assignedTo: assignee } : {}),
+          weight,
+          isRecurring: !!repeat,
+          ...(repeat ? { cronSchedule: repeat } : {}),
+        }),
+      );
       toast.success('Chore created');
       reset();
       onCreated();
       onClose();
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Could not create chore'));
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -90,48 +98,20 @@ export default function NewChoreModal({ open, onClose, houseId, members, onCreat
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="chore-assignee">Whose turn first?</label>
-            <select id="chore-assignee" className="input" value={assignee} onChange={(e) => setAssignee(e.target.value)}>
-              <option value="">Fairest pick (automatic)</option>
-              {activeMembers.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.user?.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="chore-repeat">Repeat</label>
-            <select id="chore-repeat" className="input" value={repeat} onChange={(e) => setRepeat(e.target.value)}>
-              {REPEAT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select label="Whose turn first?" value={assignee} options={assigneeOptions} onChange={setAssignee} />
+          <Select label="Repeat" value={repeat} options={REPEAT_OPTIONS} onChange={setRepeat} />
         </div>
 
         <DueDateTimeField date={date} time={time} onDateChange={setDate} onTimeChange={setTime} minDate={new Date()} />
 
-        <div>
-          <label className="label" htmlFor="chore-weight">
-            Effort <span className="font-normal text-neutral-500">· {weight * 10} pts, ₹{weight * 5} if missed</span>
-          </label>
-          <input
-            id="chore-weight"
-            type="range"
-            min={1}
-            max={10}
+        <div className="flex flex-col items-center rounded-2xl bg-neutral-50 py-4">
+          <p className="label">How big is this job?</p>
+          <EffortDial
             value={weight}
-            onChange={(e) => setWeight(Number(e.target.value))}
-            className="w-full accent-neutral-900"
+            onChange={setWeight}
+            label="Effort, 1 to 10"
+            caption={`${weight * 10} pts when approved · ₹${weight * 5} if missed`}
           />
-          <div className="flex justify-between text-xs text-neutral-400">
-            <span>Quick</span>
-            <span>Big job</span>
-          </div>
         </div>
 
         {repeat && (
@@ -144,9 +124,14 @@ export default function NewChoreModal({ open, onClose, houseId, members, onCreat
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn-primary flex-1" disabled={saving || !date || title.trim().length < 2}>
-            {saving ? 'Creating…' : 'Create chore'}
-          </button>
+          <SubmitButton
+            status={status}
+            className="flex-1"
+            disabled={!date || title.trim().length < 2}
+            labels={{ running: 'Creating…', done: 'Created', failed: 'Try again' }}
+          >
+            Create chore
+          </SubmitButton>
         </div>
       </form>
     </Modal>

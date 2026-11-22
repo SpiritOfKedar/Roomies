@@ -4,6 +4,8 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { BellRing, Check, PencilLine } from 'lucide-react';
 import SubmitProofForm from '@/components/turns/SubmitProofForm';
+import SubmitButton from '@/components/ui/SubmitButton';
+import { useActionStatus } from '@/hooks/useActionStatus';
 import { messagesApi, tasksApi } from '@/lib/endpoints';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { resolveProofUrl } from '@/lib/proofUrl';
@@ -45,26 +47,30 @@ function Panel({ tone = 'neutral', title, children }: { tone?: 'neutral' | 'info
 
 function NudgeButton({ houseId, message, who }: { houseId: string; message: string; who: string }) {
   const [sent, setSent] = useState(false);
-  const [sending, setSending] = useState(false);
+  const { status, run } = useActionStatus();
   const nudge = async () => {
-    setSending(true);
     try {
       const fd = new FormData();
       fd.append('body', message);
-      await messagesApi.send(houseId, fd);
+      await run(() => messagesApi.send(houseId, fd));
       setSent(true);
       toast.success(`Reminder posted in house chat for ${who}`);
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Could not send reminder'));
-    } finally {
-      setSending(false);
     }
   };
   return (
-    <button type="button" className="btn-secondary" onClick={nudge} disabled={sent || sending}>
+    <SubmitButton
+      type="button"
+      tone="light"
+      status={status}
+      onClick={nudge}
+      disabled={sent}
+      labels={{ running: 'Posting…', done: 'Reminder posted', failed: 'Try again' }}
+    >
       <BellRing className="size-4" />
-      {sent ? 'Reminder sent' : sending ? 'Sending…' : `Nudge ${who}`}
-    </button>
+      {sent ? 'Reminder sent' : `Nudge ${who}`}
+    </SubmitButton>
   );
 }
 
@@ -93,16 +99,20 @@ function Proof({ submission }: { submission?: ChoreThreadSubmission }) {
 function ReviewForm({ task, submission, onChanged }: { task: Task; submission?: ChoreThreadSubmission; onChanged: () => void }) {
   const [mode, setMode] = useState<'choose' | 'changes'>('choose');
   const [reason, setReason] = useState('');
-  const [saving, setSaving] = useState(false);
+  const approveAction = useActionStatus();
+  const feedbackAction = useActionStatus();
+  const saving = approveAction.status !== 'idle' || feedbackAction.status !== 'idle';
 
   const cast = async (vote: 'approve' | 'reject') => {
     if (vote === 'reject' && reason.trim().length < 3) {
       toast.error('Say what needs fixing');
       return;
     }
-    setSaving(true);
+    const action = vote === 'approve' ? approveAction : feedbackAction;
     try {
-      const { data } = await tasksApi.vote(task.houseId, task.id, vote, vote === 'reject' ? reason.trim() : undefined);
+      const { data } = await action.run(() =>
+        tasksApi.vote(task.houseId, task.id, vote, vote === 'reject' ? reason.trim() : undefined),
+      );
       const result = data.data;
       if (result.finalStatus === 'completed') {
         toast.success(
@@ -113,8 +123,6 @@ function ReviewForm({ task, submission, onChanged }: { task: Task; submission?: 
       onChanged();
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Could not record your vote'));
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -123,10 +131,17 @@ function ReviewForm({ task, submission, onChanged }: { task: Task; submission?: 
       <Proof submission={submission} />
       {mode === 'choose' ? (
         <div className="flex flex-col gap-3 sm:flex-row">
-          <button type="button" className="btn-primary flex-1 !bg-emerald-600 hover:!bg-emerald-700" disabled={saving} onClick={() => cast('approve')}>
+          <SubmitButton
+            type="button"
+            status={approveAction.status}
+            className="flex-1 !bg-emerald-600 hover:!bg-emerald-700"
+            disabled={saving && approveAction.status === 'idle'}
+            onClick={() => cast('approve')}
+            labels={{ running: 'Approving…', done: 'Approved', failed: 'Try again' }}
+          >
             <Check className="size-4" />
             Approve
-          </button>
+          </SubmitButton>
           <button type="button" className="btn-secondary flex-1" disabled={saving} onClick={() => setMode('changes')}>
             <PencilLine className="size-4" />
             Request changes
@@ -162,9 +177,16 @@ function ReviewForm({ task, submission, onChanged }: { task: Task; submission?: 
             <button type="button" className="btn-secondary flex-1" onClick={() => setMode('choose')} disabled={saving}>
               Back
             </button>
-            <button type="button" className="btn-primary flex-1" onClick={() => cast('reject')} disabled={saving || reason.trim().length < 3}>
-              {saving ? 'Sending…' : 'Send feedback'}
-            </button>
+            <SubmitButton
+              type="button"
+              status={feedbackAction.status}
+              className="flex-1"
+              onClick={() => cast('reject')}
+              disabled={reason.trim().length < 3}
+              labels={{ running: 'Sending…', done: 'Feedback sent', failed: 'Try again' }}
+            >
+              Send feedback
+            </SubmitButton>
           </div>
         </div>
       )}

@@ -7,7 +7,8 @@ import { housesApi } from '@/lib/endpoints';
 import { useHouseDashboard } from '@/hooks/useHouseDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import TasksTab, { type TaskView } from './components/TasksTab';
-import { NotificationBell } from '@/components/ui/rare/notification-bell';
+import BellToggle from '@/components/ui/reactbits/bell-toggle';
+import { useHouseAlerts, useNeedsNotifier } from '@/hooks/useHouseAlerts';
 import Loader from '@/components/ui/Loader';
 import { computeNeedsYou } from '@/lib/turn-status';
 import ExpensesTab from './components/expenses/ExpensesTab';
@@ -50,7 +51,11 @@ export default function HousePage() {
   const [tab, setTab] = useState<Tab>('tasks');
   const [taskView, setTaskView] = useState<TaskView>('needs');
 
-  const { data: dashboard, isLoading, isError } = useHouseDashboard(id);
+  // Alerts on: poll every minute (also in the background) so new turns can notify.
+  const alerts = useHouseAlerts(id);
+  const { data: dashboard, isLoading, isError } = useHouseDashboard(id, 'active', {
+    pollMs: alerts.enabled ? 60_000 : undefined,
+  });
 
   const house = dashboard?.house ?? null;
   const members = house?.members ?? [];
@@ -62,6 +67,7 @@ export default function HousePage() {
       computeNeedsYou(dashboard?.chores.items ?? [], dashboard?.voteStatuses ?? {}, user?.id, members).count,
     [dashboard, user?.id, members],
   );
+  useNeedsNotifier(id, house?.name, dashboard ? needsCount : null, alerts.enabled);
 
   const [showAddMember, setShowAddMember] = useState(false);
   const [addMemberEmail, setAddMemberEmail] = useState('');
@@ -171,14 +177,24 @@ export default function HousePage() {
               </div>
             )}
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <NotificationBell
+              {/* One control: on = badge with what's waiting on you + browser alerts; off = silenced */}
+              <BellToggle
+                pressed={alerts.enabled}
+                onChange={alerts.setEnabled}
+                offLabel="Alerts off"
+                onLabel="Alerts on"
+                label={
+                  alerts.enabled
+                    ? `Alerts on${needsCount ? `, ${needsCount} waiting on you` : ''}. Turn off`
+                    : 'Alerts off. Turn on'
+                }
+                badge
                 count={needsCount}
-                size={44}
-                title={needsCount ? `${needsCount} waiting on you` : 'Nothing waiting on you'}
-                onClick={() => {
-                  setTab('tasks');
-                  setTaskView('needs');
-                }}
+                color="#171717"
+                background="#f5f5f5"
+                onColor="#ffffff"
+                onBackground="#171717"
+                size="md"
               />
               <button
                 type="button"

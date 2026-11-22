@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import FileUpload from '@/components/ui/FileUpload';
+import SubmitButton from '@/components/ui/SubmitButton';
+import { useActionStatus } from '@/hooks/useActionStatus';
 import { tasksApi } from '@/lib/endpoints';
 import { getApiErrorMessage } from '@/lib/api-error';
 
@@ -27,7 +29,7 @@ export default function SubmitProofForm({
 }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [note, setNote] = useState('');
-  const [saving, setSaving] = useState(false);
+  const { status, run } = useActionStatus();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,20 +37,17 @@ export default function SubmitProofForm({
       toast.error('Tell your housemates what you changed');
       return;
     }
-    setSaving(true);
     try {
       const fd = new FormData();
       if (file) fd.append('proof', file);
       if (note.trim()) fd.append('clarification', note.trim());
-      await tasksApi.submit(houseId, taskId, fd);
+      await run(() => tasksApi.submit(houseId, taskId, fd));
       toast.success(isResubmit ? 'Resubmitted for review' : 'Sent for review');
       setFile(null);
       setNote('');
       onDone();
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Could not submit'));
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -80,9 +79,13 @@ export default function SubmitProofForm({
             Cancel
           </button>
         )}
-        <button type="submit" className="btn-primary flex-1" disabled={saving}>
-          {saving ? 'Sending…' : submitLabel ?? (isResubmit ? 'Resubmit for review' : 'Send for review')}
-        </button>
+        <SubmitButton
+          status={status}
+          className="flex-1"
+          labels={{ running: file ? 'Uploading proof…' : 'Sending…', done: 'Sent for review', failed: 'Try again' }}
+        >
+          {submitLabel ?? (isResubmit ? 'Resubmit for review' : 'Send for review')}
+        </SubmitButton>
       </div>
     </form>
   );

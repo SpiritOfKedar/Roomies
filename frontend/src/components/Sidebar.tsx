@@ -1,8 +1,12 @@
 'use client';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { Icon } from '@/components/Icon';
+import { RailToc, type RailTocItem } from '@/components/ui/rare/rail-toc';
+import { housesApi } from '@/lib/endpoints';
 
 const navItems = [
   { label: 'My Houses', href: '/dashboard', icon: 'dashboard' },
@@ -11,10 +15,57 @@ const navItems = [
   { label: 'Community', href: '/community', icon: 'group' },
 ];
 
+/** Houses listed under "My Houses" in the rail; more than this and the list links to the dashboard. */
+const MAX_RAIL_HOUSES = 5;
+
+/**
+ * Rail items: the main sections, with your houses nested under "My Houses"
+ * (one indent level, which is what gives the rail its bends).
+ */
+function buildRail(houses: { id: string; name: string }[]): RailTocItem[] {
+  const [home, ...rest] = navItems;
+  return [
+    { id: home.href, label: home.label, href: home.href },
+    ...houses.slice(0, MAX_RAIL_HOUSES).map((h) => ({
+      id: `house-${h.id}`,
+      label: h.name,
+      href: `/houses/${h.id}`,
+      depth: 1,
+    })),
+    ...rest.map((item) => ({ id: item.href, label: item.label, href: item.href })),
+  ];
+}
+
+/** The rail item for this route, or -1 for pages that aren't in the menu (e.g. Settings). */
+function activeRailIndex(items: RailTocItem[], pathname: string): number {
+  // Deepest match wins, so /houses/abc/chores/xyz highlights house "abc".
+  let best = -1;
+  let bestLength = 0;
+  items.forEach((item, i) => {
+    const href = item.href ?? '';
+    if ((pathname === href || pathname.startsWith(`${href}/`)) && href.length > bestLength) {
+      best = i;
+      bestLength = href.length;
+    }
+  });
+  // A house that isn't listed in the rail still belongs under "My Houses".
+  if (best === -1 && pathname.startsWith('/houses/')) return 0;
+  return best;
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const initial = user?.name?.[0]?.toUpperCase() ?? '?';
+
+  // Same query as the My Tasks page, so the list is shared from cache.
+  const { data: houses = [] } = useQuery({
+    queryKey: ['houses'],
+    queryFn: async () => (await housesApi.list()).data.data ?? [],
+    enabled: !!user,
+  });
+  const railItems = useMemo(() => buildRail(houses), [houses]);
+  const activeRail = activeRailIndex(railItems, pathname);
 
   return (
     <>
@@ -29,26 +80,14 @@ export default function Sidebar() {
             <h1 className="text-xl font-bold tracking-tight text-[#171717]">Roomies</h1>
           </div>
 
-          {/* Nav */}
-          <nav className="flex flex-col gap-1">
-            {navItems.map(item => {
-              const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    active
-                      ? 'bg-neutral-100 text-black font-semibold'
-                      : 'text-[#737373] hover:bg-neutral-50 hover:text-[#171717]'
-                  }`}
-                >
-                  <Icon name={item.icon} size={20} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+          {/* Nav — Rare UI rail: the plane flies to the page you're on */}
+          <RailToc
+            title="Menu"
+            className="w-full pl-1 text-[15px] [&_[data-slot=rail-toc-list]_a]:truncate [&_[data-slot=rail-toc-list]_a]:py-2"
+            indent={18}
+            items={railItems}
+            activeIndex={activeRail}
+          />
         </div>
 
         {/* Bottom */}

@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 @layer base {
+  /* Theme tokens read by Rare UI components (rail-toc uses color-mix on these) */
+  :root {
+    --foreground: #171717;
+    --background: #ffffff;
+  }
   * { box-sizing: border-box; }
   body {
     font-family: 'Manrope', sans-serif;

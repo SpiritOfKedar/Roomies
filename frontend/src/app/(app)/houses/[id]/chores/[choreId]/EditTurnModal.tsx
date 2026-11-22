@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/Modal';
 import DueDateTimeField from '@/components/turns/DueDateTimeField';
+import EffortDial from '@/components/turns/EffortDial';
+import Select from '@/components/ui/Select';
+import SubmitButton from '@/components/ui/SubmitButton';
+import { useActionStatus } from '@/hooks/useActionStatus';
 import { tasksApi } from '@/lib/endpoints';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { splitDeadline, toDeadlineISO, END_OF_DAY, type TimeOfDay } from '@/lib/deadline';
@@ -26,7 +30,7 @@ export default function EditTurnModal({ open, onClose, houseId, task, members, o
   const [time, setTime] = useState<TimeOfDay>(END_OF_DAY);
   const [reward, setReward] = useState(task.rewardPoints);
   const [fine, setFine] = useState(String(Number(task.penaltyFine)));
-  const [saving, setSaving] = useState(false);
+  const { status, run } = useActionStatus();
 
   useEffect(() => {
     if (!open) return;
@@ -58,16 +62,13 @@ export default function EditTurnModal({ open, onClose, houseId, task, members, o
       onClose();
       return;
     }
-    setSaving(true);
     try {
-      await tasksApi.update(houseId, task.id, changes);
+      await run(() => tasksApi.update(houseId, task.id, changes));
       toast.success('Turn updated');
       onSaved();
       onClose();
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Could not update'));
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -83,23 +84,19 @@ export default function EditTurnModal({ open, onClose, houseId, task, members, o
           <label className="label" htmlFor="edit-title">Chore</label>
           <input id="edit-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} minLength={2} maxLength={200} required />
         </div>
-        <div>
-          <label className="label" htmlFor="edit-assignee">Whose turn</label>
-          <select id="edit-assignee" className="input" value={assignee} onChange={(e) => setAssignee(e.target.value)}>
-            {members
-              .filter((m) => m.status === 'active' || m.userId === task.assignedTo)
-              .map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.user?.name}
-                </option>
-              ))}
-          </select>
-        </div>
+        <Select
+          label="Whose turn"
+          value={assignee}
+          onChange={setAssignee}
+          options={members
+            .filter((m) => m.status === 'active' || m.userId === task.assignedTo)
+            .map((m) => ({ value: m.userId, label: m.user?.name ?? 'Member', tag: m.userId === task.assignedTo ? 'current' : undefined }))}
+        />
         <DueDateTimeField date={date} time={time} onDateChange={setDate} onTimeChange={setTime} minDate={new Date()} />
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label" htmlFor="edit-reward">Points (max 100)</label>
-            <input id="edit-reward" className="input" type="number" min={1} max={100} value={reward} onChange={(e) => setReward(Number(e.target.value))} />
+        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-2">
+          <div className="flex flex-col items-center rounded-2xl bg-neutral-50 py-3">
+            <p className="label">Points when approved</p>
+            <EffortDial value={reward} onChange={setReward} min={1} max={100} label="Points, 1 to 100" size={150} />
           </div>
           <div>
             <label className="label" htmlFor="edit-fine">Fine if missed, ₹ (max 1000)</label>
@@ -108,7 +105,9 @@ export default function EditTurnModal({ open, onClose, houseId, task, members, o
         </div>
         <div className="flex gap-3">
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn-primary flex-1" disabled={saving || !date}>{saving ? 'Saving…' : 'Save changes'}</button>
+          <SubmitButton status={status} className="flex-1" disabled={!date} labels={{ running: 'Saving…', done: 'Saved', failed: 'Try again' }}>
+            Save changes
+          </SubmitButton>
         </div>
       </form>
     </Modal>
