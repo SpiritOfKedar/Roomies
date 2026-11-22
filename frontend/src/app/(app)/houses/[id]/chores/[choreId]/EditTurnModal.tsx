@@ -73,8 +73,21 @@ export default function EditTurnModal({ open, onClose, houseId, task, members, o
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit this turn" size="lg">
-      <form onSubmit={submit} className="flex flex-col gap-5">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Edit this turn"
+      size="lg"
+      footer={
+        <div className="flex gap-3">
+          <button type="button" className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
+          <SubmitButton form="edit-turn-form" status={status} className="flex-1" disabled={!date} labels={{ running: 'Saving…', done: 'Saved', failed: 'Try again' }}>
+            Save changes
+          </SubmitButton>
+        </div>
+      }
+    >
+      <form id="edit-turn-form" onSubmit={submit} className="flex flex-col gap-4">
         {task.status !== 'pending' && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             Giving this turn to someone else restarts it: the current proof and votes are cleared.
@@ -93,21 +106,13 @@ export default function EditTurnModal({ open, onClose, houseId, task, members, o
             .map((m) => ({ value: m.userId, label: m.user?.name ?? 'Member', tag: m.userId === task.assignedTo ? 'current' : undefined }))}
         />
         <DueDateTimeField date={date} time={time} onDateChange={setDate} onTimeChange={setTime} minDate={new Date()} />
-        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-2">
-          <div className="flex flex-col items-center rounded-2xl bg-neutral-50 py-3">
-            <p className="label">Points when approved</p>
-            <EffortDial value={reward} onChange={setReward} min={1} max={100} label="Points, 1 to 100" size={150} />
+        <div className="flex flex-wrap items-center gap-5 rounded-2xl bg-neutral-50 px-5 py-3">
+          <EffortDial value={reward} onChange={setReward} min={1} max={100} label="Points, 1 to 100" size={112} />
+          <div className="min-w-[180px] flex-1">
+            <p className="text-sm font-semibold text-neutral-900">Points when approved</p>
+            <label className="mt-3 block text-sm font-semibold text-neutral-900" htmlFor="edit-fine">Fine if missed, ₹ (max 1000)</label>
+            <input id="edit-fine" className="input mt-1.5 bg-white" type="number" min={1} max={1000} step="0.01" value={fine} onChange={(e) => setFine(e.target.value)} />
           </div>
-          <div>
-            <label className="label" htmlFor="edit-fine">Fine if missed, ₹ (max 1000)</label>
-            <input id="edit-fine" className="input" type="number" min={1} max={1000} step="0.01" value={fine} onChange={(e) => setFine(e.target.value)} />
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <button type="button" className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
-          <SubmitButton status={status} className="flex-1" disabled={!date} labels={{ running: 'Saving…', done: 'Saved', failed: 'Try again' }}>
-            Save changes
-          </SubmitButton>
         </div>
       </form>
     </Modal>

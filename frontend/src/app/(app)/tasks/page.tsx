@@ -10,8 +10,7 @@ import { computeNeedsYou } from '@/lib/turn-status';
 import { AnimatedCounter } from '@/components/ui/rare/animated-counter';
 import Loader from '@/components/ui/Loader';
 import EmptyState from '@/components/ui/EmptyState';
-import TurnRow from '../houses/[id]/components/tasks/TurnRow';
-import MyTurnsList from '../houses/[id]/components/tasks/MyTurnsList';
+import TurnChecklist from '../houses/[id]/components/tasks/TurnChecklist';
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
@@ -94,28 +93,14 @@ export default function MyTasksPage() {
                 Open house <ArrowRight className="size-4" />
               </Link>
             </div>
-            {[...needs.toFix, ...needs.toReview].length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {[...needs.toFix, ...needs.toReview].map(({ chore, task }) => (
-                  <TurnRow
-                    key={chore.id}
-                    houseId={house.id}
-                    chore={chore}
-                    task={task}
-                    members={members}
-                    viewerId={user?.id}
-                    vote={voteStatuses[task.id]}
-                  />
-                ))}
-              </ul>
-            )}
-            {needs.myTurns.length > 0 && (
-              <MyTurnsList
-                houseId={house.id}
-                turns={needs.myTurns}
-                onChanged={() => queryClient.invalidateQueries({ queryKey: ['house', house.id, 'dashboard'] })}
-              />
-            )}
+            <TurnChecklist
+              houseId={house.id}
+              turns={[...needs.toFix, ...needs.toReview, ...needs.myTurns]}
+              members={members}
+              viewerId={user?.id}
+              voteStatuses={voteStatuses}
+              onChanged={() => queryClient.invalidateQueries({ queryKey: ['house', house.id, 'dashboard'] })}
+            />
           </section>
         ))
       )}

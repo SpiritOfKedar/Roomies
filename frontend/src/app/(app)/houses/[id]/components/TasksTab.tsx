@@ -10,8 +10,7 @@ import Loader from '@/components/ui/Loader';
 import EmptyState from '@/components/ui/EmptyState';
 import { computeNeedsYou, isOpen } from '@/lib/turn-status';
 import type { Chore, House, HouseDashboard, HouseMember } from '@/types';
-import TurnRow from './tasks/TurnRow';
-import MyTurnsList from './tasks/MyTurnsList';
+import TurnChecklist, { type ChecklistTurn } from './tasks/TurnChecklist';
 import NewChoreModal from './tasks/NewChoreModal';
 
 export type TaskView = 'needs' | 'progress' | 'finished';
@@ -64,17 +63,18 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard,
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['house', houseId, 'dashboard'] });
 
   const byStatus = (status: string) => openChores.filter((c) => c.activeInstance?.status === status);
-  const row = (chore: Chore) => (
-    <TurnRow
-      key={chore.id}
+  // Every list on this tab is the same checklist.
+  const list = (turns: ChecklistTurn[]) => (
+    <TurnChecklist
       houseId={houseId}
-      chore={chore}
-      task={chore.activeInstance}
+      turns={turns}
       members={members}
       viewerId={user?.id}
-      vote={chore.activeInstance ? voteStatuses[chore.activeInstance.id] : undefined}
+      voteStatuses={voteStatuses}
+      onChanged={refresh}
     />
   );
+  const asTurns = (cs: Chore[]): ChecklistTurn[] => cs.map((chore) => ({ chore, task: chore.activeInstance }));
 
   const newChoreButton = isAdmin && (
     <button type="button" onClick={() => setShowNew(true)} className="btn-primary w-full">
@@ -113,17 +113,17 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard,
             <div className="flex flex-col gap-8">
               {needs.toFix.length > 0 && (
                 <Section title="Changes requested on yours" count={needs.toFix.length}>
-                  <ul className="flex flex-col gap-2">{needs.toFix.map(({ chore }) => row(chore))}</ul>
+                  {list(needs.toFix)}
                 </Section>
               )}
               {needs.toReview.length > 0 && (
                 <Section title="Waiting for your review" count={needs.toReview.length}>
-                  <ul className="flex flex-col gap-2">{needs.toReview.map(({ chore }) => row(chore))}</ul>
+                  {list(needs.toReview)}
                 </Section>
               )}
               {needs.myTurns.length > 0 && (
                 <Section title="Your turns">
-                  <MyTurnsList houseId={houseId} turns={needs.myTurns} onChanged={refresh} />
+                  {list(needs.myTurns)}
                 </Section>
               )}
             </div>
@@ -139,17 +139,17 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard,
             <div className="flex flex-col gap-8">
               {byStatus('disputed').length > 0 && (
                 <Section title="Changes requested" count={byStatus('disputed').length}>
-                  <ul className="flex flex-col gap-2">{byStatus('disputed').map(row)}</ul>
+                  {list(asTurns(byStatus('disputed')))}
                 </Section>
               )}
               {byStatus('submitted').length > 0 && (
                 <Section title="In review" count={byStatus('submitted').length}>
-                  <ul className="flex flex-col gap-2">{byStatus('submitted').map(row)}</ul>
+                  {list(asTurns(byStatus('submitted')))}
                 </Section>
               )}
               {byStatus('pending').length > 0 && (
                 <Section title="To do" count={byStatus('pending').length}>
-                  <ul className="flex flex-col gap-2">{byStatus('pending').map(row)}</ul>
+                  {list(asTurns(byStatus('pending')))}
                 </Section>
               )}
             </div>
@@ -163,18 +163,7 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard,
           />
         ) : (
           <Section title="Finished chores" count={finishedChores.length}>
-            <ul className="flex flex-col gap-2">
-              {finishedChores.map((chore) => (
-                <TurnRow
-                  key={chore.id}
-                  houseId={houseId}
-                  chore={chore}
-                  task={chore.activeInstance}
-                  members={members}
-                  viewerId={user?.id}
-                />
-              ))}
-            </ul>
+            {list(asTurns(finishedChores))}
           </Section>
         )}
       </div>

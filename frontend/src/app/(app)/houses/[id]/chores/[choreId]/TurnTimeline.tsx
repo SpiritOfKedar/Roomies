@@ -1,14 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import { Check, MessageCircle, PencilLine, Upload, UserRound } from 'lucide-react';
+import { Check, MessageCircle, PencilLine, Upload, UserRound, X } from 'lucide-react';
 import { tasksApi } from '@/lib/endpoints';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { resolveProofUrl } from '@/lib/proofUrl';
 import { cn } from '@/lib/utils';
-import type { ChoreThreadCycle, ChoreThreadSubmission, TaskCommentNode } from '@/types';
+import type { ChoreThreadCycle, TaskCommentNode } from '@/types';
 
 interface Props {
   cycle: ChoreThreadCycle;
@@ -18,6 +18,7 @@ interface Props {
 }
 
 const when = (iso: string) => format(new Date(iso), 'EEE d MMM · h:mm a');
+const byTime = <T extends { createdAt: string }>(a: T, b: T) => +new Date(a.createdAt) - +new Date(b.createdAt);
 
 function Event({ icon, tone = 'neutral', children }: { icon: React.ReactNode; tone?: 'neutral' | 'success' | 'warning'; children: React.ReactNode }) {
   const tones = {
@@ -34,129 +35,203 @@ function Event({ icon, tone = 'neutral', children }: { icon: React.ReactNode; to
   );
 }
 
-function CommentForm({ taskId, submissionId, parentId, onDone }: { taskId: string; submissionId: string; parentId?: string; onDone: () => void }) {
+type TimelineItem =
+  | { kind: 'proof'; at: string; sub: ChoreThreadCycle['submissions'][number] }
+  | { kind: 'vote'; at: string; sub: ChoreThreadCycle['submissions'][number]; vote: ChoreThreadCycle['submissions'][number]['votes'][number] };
+
+/** One reply level is enough in a chore thread; deeper replies flatten under their root. */
+function CommentList({
+  comments,
+  onReply,
+  replyingTo,
+}: {
+  comments: TaskCommentNode[];
+  onReply: (c: TaskCommentNode) => void;
+  replyingTo?: string;
+}) {
+  const flatten = (nodes: TaskCommentNode[]): TaskCommentNode[] => nodes.flatMap((n) => [n, ...flatten(n.replies)]);
+  return (
+    <ul className="flex flex-col gap-3">
+      {comments.map((c) => {
+        const replies = flatten(c.replies).sort(byTime);
+        return (
+          <li key={c.id}>
+            <Comment comment={c} onReply={onReply} active={replyingTo === c.id} />
+            {replies.length > 0 && (
+              <ul className="ml-4 mt-2 flex flex-col gap-2 border-l-2 border-neutral-200 pl-3">
+                {replies.map((r) => (
+                  <li key={r.id}>
+                    <Comment comment={r} onReply={() => onReply(c)} active={false} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function Comment({ comment, onReply, active }: { comment: TaskCommentNode; onReply: (c: TaskCommentNode) => void; active: boolean }) {
+  return (
+    <div className={cn('rounded-xl px-3 py-2 text-sm', active ? 'bg-neutral-100 ring-1 ring-neutral-300' : 'bg-neutral-50')}>
+      <span className="font-semibold text-neutral-900">{comment.user.name}</span>
+      <span className="ml-2 text-xs text-neutral-400">{when(comment.createdAt)}</span>
+      <p className="mt-0.5 whitespace-pre-wrap text-neutral-700">{comment.body}</p>
+      <button type="button" onClick={() => onReply(comment)} className="mt-1 text-xs font-semibold text-neutral-500 hover:text-neutral-900">
+        Reply
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Everything that happened in one turn, as two parts:
+ *  1. the timeline — assigned, proof, approvals/changes — strictly in time order;
+ *  2. one comment thread for the turn, with a single composer. "Reply" points
+ *     that same composer at a comment instead of opening a second box.
+ */
+export default function TurnTimeline({ cycle, assignedAt, maxAttempts, onChanged }: Props) {
   const [text, setText] = useState('');
+  const [replyTo, setReplyTo] = useState<TaskCommentNode | null>(null);
   const [saving, setSaving] = useState(false);
-  const submit = async (e: React.FormEvent) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const events = useMemo<TimelineItem[]>(() => {
+    const items: TimelineItem[] = [];
+    for (const sub of cycle.submissions) {
+      items.push({ kind: 'proof', at: sub.submittedAt, sub });
+      for (const vote of sub.votes) items.push({ kind: 'vote', at: vote.createdAt, sub, vote });
+    }
+    return items.sort((a, b) => +new Date(a.at) - +new Date(b.at));
+  }, [cycle.submissions]);
+
+  // Comments are stored per submission; the turn shows them as one thread.
+  const comments = useMemo(
+    () => cycle.submissions.flatMap((s) => s.comments).sort(byTime),
+    [cycle.submissions],
+  );
+  const latest = cycle.submissions[cycle.submissions.length - 1];
+
+  const startReply = (c: TaskCommentNode) => {
+    setReplyTo(c);
+    inputRef.current?.focus();
+  };
+
+  const post = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!text.trim() || !latest) return;
     setSaving(true);
     try {
       const fd = new FormData();
       fd.append('body', text.trim());
-      fd.append('submissionId', submissionId);
-      if (parentId) fd.append('parentId', parentId);
-      await tasksApi.addComment(taskId, fd);
+      // A reply stays on its parent's submission; a new comment goes on the latest one.
+      fd.append('submissionId', replyTo?.submissionId ?? latest.submissionId);
+      if (replyTo) fd.append('parentId', replyTo.id);
+      await tasksApi.addComment(cycle.instanceId, fd);
       setText('');
-      onDone();
+      setReplyTo(null);
+      onChanged();
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Could not post comment'));
     } finally {
       setSaving(false);
     }
   };
-  return (
-    <form onSubmit={submit} className="mt-2 flex gap-2">
-      <input
-        className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none"
-        placeholder={parentId ? 'Write a reply…' : 'Add a comment…'}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        maxLength={5000}
-      />
-      <button type="submit" disabled={saving || !text.trim()} className="rounded-lg bg-neutral-900 px-3 text-xs font-semibold text-white disabled:opacity-40">
-        {saving ? '…' : 'Post'}
-      </button>
-    </form>
-  );
-}
 
-function Comments({ comments, taskId, submissionId, onChanged, depth = 0 }: { comments: TaskCommentNode[]; taskId: string; submissionId: string; onChanged: () => void; depth?: number }) {
-  const [replyTo, setReplyTo] = useState<string | null>(null);
-  if (depth > 4) return null;
   return (
-    <ul className={cn('flex flex-col gap-2', depth > 0 && 'ml-4 mt-2 border-l-2 border-neutral-200 pl-3')}>
-      {comments.map((c) => (
-        <li key={c.id}>
-          <div className="rounded-lg bg-neutral-50 px-3 py-2 text-sm">
-            <span className="font-semibold text-neutral-900">{c.user.name}</span>
-            <span className="ml-2 text-xs text-neutral-400">{when(c.createdAt)}</span>
-            <p className="mt-0.5 whitespace-pre-wrap text-neutral-700">{c.body}</p>
-            <button type="button" onClick={() => setReplyTo(replyTo === c.id ? null : c.id)} className="mt-1 text-xs font-semibold text-neutral-500 hover:text-neutral-900">
-              Reply
-            </button>
-          </div>
-          {replyTo === c.id && (
-            <CommentForm taskId={taskId} submissionId={submissionId} parentId={c.id} onDone={() => { setReplyTo(null); onChanged(); }} />
-          )}
-          {c.replies.length > 0 && (
-            <Comments comments={c.replies} taskId={taskId} submissionId={submissionId} onChanged={onChanged} depth={depth + 1} />
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function SubmissionEvents({ sub, cycle, maxAttempts, onChanged }: { sub: ChoreThreadSubmission; cycle: ChoreThreadCycle; maxAttempts: number; onChanged: () => void }) {
-  const url = resolveProofUrl(sub.imageUrl);
-  return (
-    <>
-      <Event icon={<Upload className="size-4" />}>
-        <p className="text-sm text-neutral-900">
-          <span className="font-semibold">{cycle.assigneeName}</span> {sub.attemptNumber > 1 ? 'resubmitted' : 'handed in'} proof
-          <span className="ml-2 text-xs text-neutral-400">
-            {when(sub.submittedAt)} · attempt {sub.attemptNumber} of {maxAttempts}
-          </span>
-        </p>
-        {url && (
-          <a href={url} target="_blank" rel="noreferrer" className="mt-2 block w-fit">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt={`Proof, attempt ${sub.attemptNumber}`} className="max-h-56 rounded-xl border border-neutral-200 object-cover" />
-          </a>
-        )}
-        {sub.clarification && <p className="mt-2 rounded-lg bg-neutral-50 p-3 text-sm text-neutral-700">“{sub.clarification}”</p>}
-        <div className="mt-3">
-          {sub.comments.length > 0 && <Comments comments={sub.comments} taskId={cycle.instanceId} submissionId={sub.submissionId} onChanged={onChanged} />}
-          <CommentForm taskId={cycle.instanceId} submissionId={sub.submissionId} onDone={onChanged} />
-        </div>
-      </Event>
-      {sub.votes.map((v) => (
-        <Event
-          key={`${sub.submissionId}-${v.userId}`}
-          tone={v.vote === 'approve' ? 'success' : 'warning'}
-          icon={v.vote === 'approve' ? <Check className="size-4" /> : <PencilLine className="size-4" />}
-        >
+    <div className="flex flex-col gap-8">
+      <ol className="flex flex-col">
+        <Event icon={<UserRound className="size-4" />}>
           <p className="text-sm text-neutral-900">
-            <span className="font-semibold">{v.userName}</span> {v.vote === 'approve' ? 'approved' : 'asked for changes'}
-            <span className="ml-2 text-xs text-neutral-400">{when(v.createdAt)}</span>
+            Turn {cycle.cycleNumber} assigned to <span className="font-semibold">{cycle.assigneeName}</span>
+            {assignedAt && <span className="ml-2 text-xs text-neutral-400">{when(assignedAt)}</span>}
           </p>
-          {v.reason && <p className="mt-1 text-sm text-neutral-700">“{v.reason}”</p>}
         </Event>
-      ))}
-    </>
-  );
-}
+        {events.length === 0 ? (
+          <Event icon={<MessageCircle className="size-4" />}>
+            <p className="text-sm text-neutral-500">No proof handed in yet.</p>
+          </Event>
+        ) : (
+          events.map((item) =>
+            item.kind === 'proof' ? (
+              <Event key={`p-${item.sub.submissionId}`} icon={<Upload className="size-4" />}>
+                <p className="text-sm text-neutral-900">
+                  <span className="font-semibold">{cycle.assigneeName}</span> {item.sub.attemptNumber > 1 ? 'resubmitted' : 'handed in'} proof
+                  <span className="ml-2 text-xs text-neutral-400">
+                    {when(item.sub.submittedAt)} · attempt {item.sub.attemptNumber} of {maxAttempts}
+                  </span>
+                </p>
+                {resolveProofUrl(item.sub.imageUrl) && (
+                  <a href={resolveProofUrl(item.sub.imageUrl)!} target="_blank" rel="noreferrer" className="mt-2 block w-fit">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolveProofUrl(item.sub.imageUrl)!}
+                      alt={`Proof, attempt ${item.sub.attemptNumber}`}
+                      className="max-h-56 rounded-xl border border-neutral-200 object-cover"
+                    />
+                  </a>
+                )}
+                {item.sub.clarification && (
+                  <p className="mt-2 w-fit max-w-full rounded-lg bg-neutral-50 px-3 py-2 text-sm text-neutral-700">“{item.sub.clarification}”</p>
+                )}
+              </Event>
+            ) : (
+              <Event
+                key={`v-${item.sub.submissionId}-${item.vote.userId}`}
+                tone={item.vote.vote === 'approve' ? 'success' : 'warning'}
+                icon={item.vote.vote === 'approve' ? <Check className="size-4" /> : <PencilLine className="size-4" />}
+              >
+                <p className="text-sm text-neutral-900">
+                  <span className="font-semibold">{item.vote.userName}</span>{' '}
+                  {item.vote.vote === 'approve' ? 'approved' : 'asked for changes'}
+                  <span className="ml-2 text-xs text-neutral-400">{when(item.vote.createdAt)}</span>
+                </p>
+                {item.vote.reason && <p className="mt-1 text-sm text-neutral-700">“{item.vote.reason}”</p>}
+              </Event>
+            ),
+          )
+        )}
+      </ol>
 
-/** Everything that happened in one turn, oldest first, as a single conversation. */
-export default function TurnTimeline({ cycle, assignedAt, maxAttempts, onChanged }: Props) {
-  return (
-    <ol className="flex flex-col">
-      <Event icon={<UserRound className="size-4" />}>
-        <p className="text-sm text-neutral-900">
-          Turn {cycle.cycleNumber} assigned to <span className="font-semibold">{cycle.assigneeName}</span>
-          {assignedAt && <span className="ml-2 text-xs text-neutral-400">{when(assignedAt)}</span>}
-        </p>
-      </Event>
-      {cycle.submissions.length === 0 ? (
-        <Event icon={<MessageCircle className="size-4" />}>
-          <p className="text-sm text-neutral-500">No proof handed in yet.</p>
-        </Event>
-      ) : (
-        cycle.submissions.map((sub) => (
-          <SubmissionEvents key={sub.submissionId} sub={sub} cycle={cycle} maxAttempts={maxAttempts} onChanged={onChanged} />
-        ))
+      {latest && (
+        <section className="flex flex-col gap-3 border-t border-neutral-100 pt-6">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
+            Comments {comments.length > 0 && <span className="text-neutral-400">{comments.length}</span>}
+          </h3>
+          {comments.length > 0 && <CommentList comments={comments} onReply={startReply} replyingTo={replyTo?.id} />}
+
+          <form onSubmit={post} className="flex flex-col gap-1.5">
+            {replyTo && (
+              <p className="flex items-center gap-1.5 text-xs text-neutral-500">
+                Replying to <span className="font-semibold text-neutral-800">{replyTo.user.name}</span>
+                <button type="button" onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="rounded p-0.5 hover:bg-neutral-100">
+                  <X className="size-3.5" />
+                </button>
+              </p>
+            )}
+            <div className="flex gap-2">
+              <input
+                ref={inputRef}
+                className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none"
+                placeholder={replyTo ? `Reply to ${replyTo.user.name.split(' ')[0]}…` : 'Add a comment…'}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && setReplyTo(null)}
+                maxLength={5000}
+              />
+              <button
+                type="submit"
+                disabled={saving || !text.trim()}
+                className="rounded-lg bg-neutral-900 px-4 text-xs font-semibold text-white disabled:opacity-40"
+              >
+                {saving ? '…' : replyTo ? 'Reply' : 'Post'}
+              </button>
+            </div>
+          </form>
+        </section>
       )}
-    </ol>
+    </div>
   );
 }

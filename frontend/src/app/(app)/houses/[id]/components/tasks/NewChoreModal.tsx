@@ -4,7 +4,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/Modal';
 import Select from '@/components/ui/Select';
-import SubmitButton from '@/components/ui/SubmitButton';
+import SlideToConfirm from '@/components/ui/SlideToConfirm';
 import DueDateTimeField from '@/components/turns/DueDateTimeField';
 import EffortDial from '@/components/turns/EffortDial';
 import { useActionStatus } from '@/hooks/useActionStatus';
@@ -81,8 +81,30 @@ export default function NewChoreModal({ open, onClose, houseId, members, onCreat
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="New chore" size="lg">
-      <form onSubmit={submit} className="flex flex-col gap-5">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="New chore"
+      size="lg"
+      footer={
+        // Pinned below the scrolling body so the actions are always visible
+        <div className="flex items-center gap-3">
+          <button type="button" className="btn-secondary h-[52px] shrink-0 !rounded-full px-6" onClick={onClose}>
+            Cancel
+          </button>
+          {/* Slide (or Enter on the handle) submits the form, so its validation still runs */}
+          <SlideToConfirm
+            className="flex-1"
+            label={!date ? 'Pick a due date first' : 'Slide to create chore'}
+            status={status}
+            disabled={!date || title.trim().length < 2}
+            onConfirm={() => (document.getElementById('new-chore-form') as HTMLFormElement | null)?.requestSubmit()}
+            labels={{ running: 'Creating…', done: 'Created', failed: 'Try again' }}
+          />
+        </div>
+      }
+    >
+      <form id="new-chore-form" onSubmit={submit} className="flex flex-col gap-4">
         <div>
           <label className="label" htmlFor="chore-title">What needs doing?</label>
           <input
@@ -104,14 +126,17 @@ export default function NewChoreModal({ open, onClose, houseId, members, onCreat
 
         <DueDateTimeField date={date} time={time} onDateChange={setDate} onTimeChange={setTime} minDate={new Date()} />
 
-        <div className="flex flex-col items-center rounded-2xl bg-neutral-50 py-4">
-          <p className="label">How big is this job?</p>
-          <EffortDial
-            value={weight}
-            onChange={setWeight}
-            label="Effort, 1 to 10"
-            caption={`${weight * 10} pts when approved · ₹${weight * 5} if missed`}
-          />
+        {/* Compact: dial beside its explanation, not a tall block of its own */}
+        <div className="flex items-center gap-5 rounded-2xl bg-neutral-50 px-5 py-3">
+          <EffortDial value={weight} onChange={setWeight} label="Effort, 1 to 10" size={112} />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-neutral-900">How big is this job?</p>
+            <p className="mt-1 text-sm text-neutral-600">
+              <span className="font-semibold text-emerald-600">{weight * 10} pts</span> when approved ·{' '}
+              <span className="font-semibold text-red-600">₹{weight * 5}</span> if missed
+            </p>
+            <p className="mt-1 text-xs text-neutral-400">Drag the dial, or focus it and use the arrow keys.</p>
+          </div>
         </div>
 
         {repeat && (
@@ -119,20 +144,6 @@ export default function NewChoreModal({ open, onClose, houseId, members, onCreat
             When a turn ends, the next one goes to whoever is fairest — based on open chores and who did it last.
           </p>
         )}
-
-        <div className="flex gap-3">
-          <button type="button" className="btn-secondary flex-1" onClick={onClose}>
-            Cancel
-          </button>
-          <SubmitButton
-            status={status}
-            className="flex-1"
-            disabled={!date || title.trim().length < 2}
-            labels={{ running: 'Creating…', done: 'Created', failed: 'Try again' }}
-          >
-            Create chore
-          </SubmitButton>
-        </div>
       </form>
     </Modal>
   );
