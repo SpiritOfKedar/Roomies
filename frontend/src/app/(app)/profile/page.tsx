@@ -77,7 +77,7 @@ export default function ProfilePage() {
               <span className="text-sm text-[#737373]">Member since</span>
             </div>
             <span className="text-sm font-semibold text-[#171717]">
-              {user?.createdAt ? format(new Date(user.createdAt), 'MMMM d, yyyy') : '—'}
+              {user?.createdAt ? format(new Date(user.createdAt), 'MMMM d, yyyy') : 'Unknown'}
             </span>
           </div>
           <div className="flex justify-between items-center py-4">

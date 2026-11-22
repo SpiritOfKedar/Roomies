@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { Icon } from '@/components/Icon';
 import { formatINR } from '@/lib/currency';
 import type { Expense, HouseMember } from '@/types';
+import Loader from '@/components/ui/Loader';
 
 const EXPENSE_ICONS = [
   'wifi',
@@ -55,11 +56,7 @@ export default function ExpenseList({
 
   if (isLoading) {
     return (
-      <div className="space-y-2">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-16 animate-pulse rounded-xl bg-neutral-100" />
-        ))}
-      </div>
+      <Loader label="Loading expenses" />
     );
   }
 

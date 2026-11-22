@@ -10,6 +10,9 @@ import { useHouseExpenses } from './useHouseExpenses';
 import ExpenseSummaryCards from './ExpenseSummaryCards';
 import ExpenseList from './ExpenseList';
 import AddExpenseModal from './AddExpenseModal';
+import GlideSelect from '@/components/ui/reactbits/glide-select';
+import { useActionStatus } from '@/hooks/useActionStatus';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface Props {
   houseId: string;
@@ -33,7 +36,7 @@ export default function ExpensesTab({ houseId, members }: Props) {
   const [addTitle, setAddTitle] = useState('');
   const [addAmount, setAddAmount] = useState('');
   const [addReceipt, setAddReceipt] = useState<File | null>(null);
-  const [adding, setAdding] = useState(false);
+  const addAction = useActionStatus();
 
   const { expenses, total, pageSize, isLoading, refresh } = useHouseExpenses(houseId, page);
   const pages = Math.ceil(total / pageSize);
@@ -59,23 +62,20 @@ export default function ExpensesTab({ houseId, members }: Props) {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAdding(true);
     try {
       const fd = new FormData();
       fd.append('description', addTitle);
       fd.append('amount', addAmount);
       if (addReceipt) fd.append('receipt', addReceipt);
-      await expensesApi.create(houseId, fd);
+      await addAction.run(() => expensesApi.create(houseId, fd));
       toast.success('Expense added!');
       setShowAdd(false);
       setAddTitle('');
       setAddAmount('');
       setAddReceipt(null);
       refresh();
-    } catch {
-      toast.error('Failed to add expense');
-    } finally {
-      setAdding(false);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not add the expense'));
     }
   };
 
@@ -98,22 +98,18 @@ export default function ExpensesTab({ houseId, members }: Props) {
       />
 
       <div className="flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-center">
-        <div className="flex gap-1 rounded-lg border border-neutral-200 bg-neutral-100 p-1">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setFilter(f.id)}
-              className={`rounded-md px-4 py-2 text-sm font-semibold transition-all ${
-                filter === f.id
-                  ? 'bg-white text-neutral-900 shadow-sm'
-                  : 'text-neutral-500 hover:text-neutral-800'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <GlideSelect
+          ariaLabel="Show expenses"
+          value={filter}
+          onChange={(v) => setFilter(v as Filter)}
+          options={FILTERS.map((f) => ({ value: f.id, label: f.label }))}
+          size="lg"
+          menuWidth={180}
+          surfaceColor="#f5f5f5"
+          highlightColor="#e5e5e5"
+          textColor="#171717"
+          accentColor="#171717"
+        />
         <button type="button" onClick={() => setShowAdd(true)} className="btn-primary">
           <Icon name="add" size={18} />
           Add Expense
@@ -163,7 +159,8 @@ export default function ExpensesTab({ houseId, members }: Props) {
         title={addTitle}
         amount={addAmount}
         receipt={addReceipt}
-        adding={adding}
+        status={addAction.status}
+        splitCount={members.filter((m) => m.status === 'active').length}
         onTitleChange={setAddTitle}
         onAmountChange={setAddAmount}
         onReceiptChange={setAddReceipt}

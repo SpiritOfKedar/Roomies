@@ -141,7 +141,7 @@ export default function NewChoreModal({ open, onClose, houseId, members, onCreat
 
         {repeat && (
           <p className="rounded-lg bg-neutral-50 p-3 text-sm text-neutral-600">
-            When a turn ends, the next one goes to whoever is fairest — based on open chores and who did it last.
+            When a turn ends, the next one goes to whoever is fairest, based on open chores and who did it last.
           </p>
         )}
       </form>

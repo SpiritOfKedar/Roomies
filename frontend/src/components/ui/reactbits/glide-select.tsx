@@ -101,6 +101,9 @@ const GlideSelect: React.FC<GlideSelectProps> = ({
   const [phase, setPhase] = useState<Phase>('closed');
   const [active, setActive] = useState<number | null>(null);
   const [side, setSide] = useState<'top' | 'bottom'>(placement);
+  // Roomies: the open menu is positioned against the viewport (fixed) so a
+  // scrolling or overflow-hidden parent — e.g. a modal body — can't clip it.
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -119,6 +122,7 @@ const GlideSelect: React.FC<GlideSelectProps> = ({
     const root = rootRef.current;
     if (!el || !root) return;
     const r = root.getBoundingClientRect();
+    setAnchor(r);
     const need = el.offsetHeight + MENU_GAP;
     setSide(
       placement === 'bottom' && r.bottom + need > window.innerHeight
@@ -225,6 +229,21 @@ const GlideSelect: React.FC<GlideSelectProps> = ({
     };
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+  // A fixed menu would drift from its trigger if anything scrolls: close instead.
+  useEffect(() => {
+    if (phase !== 'open') return undefined;
+    const onScroll = (e: Event) => {
+      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) return;
+      close('instant');
+    };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
   useEffect(() => {
@@ -338,6 +357,22 @@ const GlideSelect: React.FC<GlideSelectProps> = ({
           data-state="open"
           data-side={side}
           data-align={align}
+          style={
+            anchor
+              ? {
+                  position: 'fixed',
+                  zIndex: 60,
+                  minWidth: 0,
+                  width: Math.max(menuWidth, anchor.width),
+                  ...(side === 'bottom'
+                    ? { top: anchor.bottom + MENU_GAP, bottom: 'auto' }
+                    : { bottom: window.innerHeight - anchor.top + MENU_GAP, top: 'auto' }),
+                  ...(align === 'left'
+                    ? { left: anchor.left, right: 'auto' }
+                    : { right: window.innerWidth - anchor.right, left: 'auto' }),
+                }
+              : undefined
+          }
         >
           <div
             id={`${id}-list`}

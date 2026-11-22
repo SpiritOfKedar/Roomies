@@ -2,6 +2,8 @@
 
 import Modal from '@/components/Modal';
 import FileUpload from '@/components/ui/FileUpload';
+import SubmitButton from '@/components/ui/SubmitButton';
+import type { ActionStatus } from '@/hooks/useActionStatus';
 
 interface Props {
   open: boolean;
@@ -9,7 +11,9 @@ interface Props {
   title: string;
   amount: string;
   receipt: File | null;
-  adding: boolean;
+  status: ActionStatus;
+  /** Active members the cost is split between, for the preview line */
+  splitCount: number;
   onTitleChange: (v: string) => void;
   onAmountChange: (v: string) => void;
   onReceiptChange: (f: File | null) => void;
@@ -22,18 +26,41 @@ export default function AddExpenseModal({
   title,
   amount,
   receipt,
-  adding,
+  status,
+  splitCount,
   onTitleChange,
   onAmountChange,
   onReceiptChange,
   onSubmit,
 }: Props) {
+  const share = splitCount > 0 && Number(amount) > 0 ? Math.floor((Number(amount) * 100) / splitCount) / 100 : 0;
   return (
-    <Modal open={open} onClose={onClose} title="Add Expense">
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add an expense"
+      footer={
+        <div className="flex gap-3">
+          <button type="button" className="btn-secondary flex-1" onClick={onClose}>
+            Cancel
+          </button>
+          <SubmitButton
+            form="add-expense-form"
+            status={status}
+            className="flex-1"
+            disabled={!title.trim() || !(Number(amount) > 0)}
+            labels={{ running: receipt ? 'Uploading receipt…' : 'Adding…', done: 'Added', failed: 'Try again' }}
+          >
+            Add expense
+          </SubmitButton>
+        </div>
+      }
+    >
+      <form id="add-expense-form" onSubmit={onSubmit} className="flex flex-col gap-4">
         <div>
-          <label className="label">Description</label>
+          <label className="label" htmlFor="expense-title">What was it for?</label>
           <input
+            id="expense-title"
             className="input"
             placeholder="Groceries, utilities, rent…"
             value={title}
@@ -42,8 +69,9 @@ export default function AddExpenseModal({
           />
         </div>
         <div>
-          <label className="label">Amount (₹)</label>
+          <label className="label" htmlFor="expense-amount">Amount (₹)</label>
           <input
+            id="expense-amount"
             className="input"
             type="number"
             min="0.01"
@@ -53,22 +81,19 @@ export default function AddExpenseModal({
             onChange={(e) => onAmountChange(e.target.value)}
             required
           />
+          {share > 0 && (
+            <p className="mt-1.5 text-sm text-neutral-500">
+              Split {splitCount} ways · about ₹{share.toLocaleString('en-IN')} each
+            </p>
+          )}
         </div>
         <FileUpload
           label="Receipt (optional)"
-          accept="image/*,application/pdf"
+          accept="image/jpeg,image/png,image/gif,image/webp"
           file={receipt}
           onChange={onReceiptChange}
-          hint="Split equally across all active members"
+          hint="JPEG, PNG, GIF or WebP · up to 5 MB"
         />
-        <div className="mt-2 flex gap-3">
-          <button type="button" className="btn-secondary flex-1" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="btn-primary flex-1" disabled={adding}>
-            {adding ? 'Adding…' : 'Add Expense'}
-          </button>
-        </div>
       </form>
     </Modal>
   );

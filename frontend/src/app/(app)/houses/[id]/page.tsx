@@ -10,6 +10,10 @@ import TasksTab, { type TaskView } from './components/TasksTab';
 import BellToggle from '@/components/ui/reactbits/bell-toggle';
 import { useHouseAlerts, useNeedsNotifier } from '@/hooks/useHouseAlerts';
 import Loader from '@/components/ui/Loader';
+import SubmitButton from '@/components/ui/SubmitButton';
+import SlideToConfirm from '@/components/ui/SlideToConfirm';
+import { useActionStatus } from '@/hooks/useActionStatus';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { computeNeedsYou } from '@/lib/turn-status';
 import ExpensesTab from './components/expenses/ExpensesTab';
 import LeaderboardTab from './components/leaderboard/LeaderboardTab';
@@ -29,19 +33,6 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'swaps', label: 'Swaps', icon: 'swap_horiz' },
   { id: 'penalties', label: 'Penalties', icon: 'gavel' },
 ];
-
-function HouseHeaderSkeleton() {
-  return (
-    <div className="bg-white border border-[#E5E5E5] flex flex-col gap-6 rounded-xl p-8 shadow-sm md:flex-row md:items-start md:justify-between mb-8 animate-pulse">
-      <div className="flex flex-col gap-3 flex-1">
-        <div className="h-9 w-64 rounded-lg bg-neutral-200" />
-        <div className="h-5 w-32 rounded bg-neutral-100" />
-        <div className="h-10 w-40 rounded-lg bg-neutral-100 mt-2" />
-      </div>
-      <div className="h-24 w-56 rounded-2xl bg-neutral-100 shrink-0" />
-    </div>
-  );
-}
 
 export default function HousePage() {
   const { id } = useParams<{ id: string }>();
@@ -71,13 +62,13 @@ export default function HousePage() {
 
   const [showAddMember, setShowAddMember] = useState(false);
   const [addMemberEmail, setAddMemberEmail] = useState('');
-  const [addingMember, setAddingMember] = useState(false);
+  const addMemberAction = useActionStatus();
 
   const [manageRoommateId, setManageRoommateId] = useState<string | null>(null);
-  const [managingRoommate, setManagingRoommate] = useState(false);
+  const removeAction = useActionStatus();
 
   const [showManageHouse, setShowManageHouse] = useState(false);
-  const [leavingHouse, setLeavingHouse] = useState(false);
+  const leaveAction = useActionStatus();
 
   const refreshHouse = () => {
     queryClient.invalidateQueries({ queryKey: ['house', id] });
@@ -92,60 +83,45 @@ export default function HousePage() {
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAddingMember(true);
+    if (!id || !addMemberEmail) return;
     try {
-      if (id && addMemberEmail) {
-        await housesApi.addMemberByEmail(id as string, addMemberEmail);
-        toast.success('Member added successfully');
-        setShowAddMember(false);
-        setAddMemberEmail('');
-        refreshHouse();
-      }
-    } catch {
-      toast.error('Failed to add member. Check the email and try again.');
-    } finally {
-      setAddingMember(false);
+      await addMemberAction.run(() => housesApi.addMemberByEmail(id as string, addMemberEmail));
+      toast.success('Roommate added');
+      setShowAddMember(false);
+      setAddMemberEmail('');
+      refreshHouse();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not add them. Check the email and try again.'));
     }
   };
 
+  // Started by the slide-to-confirm in Manage House (no browser confirm dialog).
   const handleLeaveHouse = async () => {
-    if (!id || !confirm('Leave this house? You will lose access to its tasks and expenses.')) return;
-    setLeavingHouse(true);
+    if (!id) return;
     try {
-      await housesApi.leave(id as string);
+      await leaveAction.run(() => housesApi.leave(id as string));
       toast.success('You have left the house');
       router.push('/dashboard');
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-        'Failed to leave house';
-      toast.error(msg);
-    } finally {
-      setLeavingHouse(false);
-      setShowManageHouse(false);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not leave the house'));
     }
   };
 
   const handleRemoveMember = async () => {
     if (!manageRoommateId || !id) return;
-    setManagingRoommate(true);
     try {
-      await housesApi.updateMember(id as string, manageRoommateId, 'inactive');
-      toast.success('Member removed successfully');
+      await removeAction.run(() => housesApi.updateMember(id as string, manageRoommateId, 'inactive'));
+      toast.success('Roommate removed');
       setManageRoommateId(null);
       refreshHouse();
-    } catch {
-      toast.error('Failed to remove member');
-    } finally {
-      setManagingRoommate(false);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not remove them'));
     }
   };
 
   return (
     <div>
-      {isLoading && !house ? (
-        <HouseHeaderSkeleton />
-      ) : house ? (
+      {house ? (
         <div className="bg-white border border-[#E5E5E5] flex flex-col gap-6 rounded-xl p-8 shadow-sm md:flex-row md:items-start md:justify-between mb-8">
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-4 flex-wrap">
@@ -282,35 +258,39 @@ export default function HousePage() {
       </div>
 
       {isAdmin && (
-        <Modal open={showAddMember} onClose={() => setShowAddMember(false)} title="Add Roommate">
-          <form onSubmit={handleAddMember} className="flex flex-col gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-[#171717] mb-1">Email Address</label>
-              <input
-                className="w-full rounded-lg border border-[#E5E5E5] px-4 py-2.5 text-[#171717] focus:border-black focus:ring-1 focus:ring-black transition-all"
-                type="email"
-                placeholder="john.doe@example.com"
-                value={addMemberEmail}
-                onChange={(e) => setAddMemberEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="flex gap-3 mt-4">
-              <button
-                type="button"
-                className="flex-1 border border-[#E5E5E5] text-[#171717] font-semibold py-2.5 rounded-lg hover:bg-neutral-50 transition-all"
-                onClick={() => setShowAddMember(false)}
-              >
+        <Modal
+          open={showAddMember}
+          onClose={() => setShowAddMember(false)}
+          title="Add a roommate"
+          footer={
+            <div className="flex gap-3">
+              <button type="button" className="btn-secondary flex-1" onClick={() => setShowAddMember(false)}>
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="flex-1 bg-black text-white font-semibold py-2.5 rounded-lg hover:bg-neutral-800 transition-all"
-                disabled={addingMember}
+              <SubmitButton
+                form="add-member-form"
+                status={addMemberAction.status}
+                className="flex-1"
+                disabled={!addMemberEmail.includes('@')}
+                labels={{ running: 'Adding…', done: 'Added', failed: 'Try again' }}
               >
-                {addingMember ? 'Adding…' : 'Add Member'}
-              </button>
+                Add roommate
+              </SubmitButton>
             </div>
+          }
+        >
+          <form id="add-member-form" onSubmit={handleAddMember} className="flex flex-col gap-2">
+            <label className="label" htmlFor="member-email">Their email</label>
+            <input
+              id="member-email"
+              className="input"
+              type="email"
+              placeholder="name@example.com"
+              value={addMemberEmail}
+              onChange={(e) => setAddMemberEmail(e.target.value)}
+              required
+            />
+            <p className="text-sm text-neutral-500">They need a Roomies account first. Or share the invite code instead.</p>
           </form>
         </Modal>
       )}
@@ -349,39 +329,34 @@ export default function HousePage() {
               You will no longer see this house&apos;s tasks, expenses, or chat.
               {isAdmin && ' If you are the only admin, promote someone else first.'}
             </p>
-            <button
-              type="button"
-              onClick={handleLeaveHouse}
-              disabled={leavingHouse}
-              className="mt-3 w-full rounded-lg border border-red-200 bg-red-50 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
-            >
-              {leavingHouse ? 'Leaving…' : 'Leave House'}
-            </button>
+            <SlideToConfirm
+              className="mt-3"
+              label="Slide to leave this house"
+              status={leaveAction.status}
+              onConfirm={handleLeaveHouse}
+              labels={{ running: 'Leaving…', done: 'Left the house', failed: 'Could not leave' }}
+            />
           </div>
         </div>
       </Modal>
 
       {isAdmin && (
-        <Modal open={!!manageRoommateId} onClose={() => setManageRoommateId(null)} title="Manage Roommate">
+        <Modal
+          open={!!manageRoommateId}
+          onClose={() => setManageRoommateId(null)}
+          title={`Remove ${manageRoommateId ? members.find((m) => m.userId === manageRoommateId)?.user?.name ?? 'roommate' : 'roommate'}?`}
+        >
           <div className="flex flex-col gap-4">
-            <p className="text-[#737373]">Do you want to completely remove this member from the house?</p>
-            <div className="flex gap-3 mt-4">
-              <button
-                type="button"
-                className="flex-1 border border-[#E5E5E5] text-[#171717] font-semibold py-2.5 rounded-lg hover:bg-neutral-50 transition-all"
-                onClick={() => setManageRoommateId(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="flex-1 bg-red-600 text-white font-semibold py-2.5 rounded-lg hover:bg-red-700 transition-all"
-                onClick={handleRemoveMember}
-                disabled={managingRoommate}
-              >
-                {managingRoommate ? 'Removing…' : 'Remove Member'}
-              </button>
-            </div>
+            <p className="text-sm text-neutral-600">
+              They lose access to this house. Turns they haven&apos;t handed in are expired, and their past
+              chores and expenses stay in the history.
+            </p>
+            <SlideToConfirm
+              label="Slide to remove"
+              status={removeAction.status}
+              onConfirm={handleRemoveMember}
+              labels={{ running: 'Removing…', done: 'Removed', failed: 'Could not remove' }}
+            />
           </div>
         </Modal>
       )}

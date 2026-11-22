@@ -1,257 +1,249 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { housesApi } from '@/lib/endpoints';
-import type { House } from '@/types';
-import Modal from '@/components/Modal';
-import toast from 'react-hot-toast';
-import { Icon } from '@/components/Icon';
 
-/* Gradient palette for house cover placeholders */
-const COVER_GRADIENTS = [
-  'from-slate-800 via-slate-700 to-slate-600',
-  'from-zinc-800 via-zinc-700 to-zinc-600',
-  'from-stone-800 via-stone-700 to-amber-800',
-  'from-neutral-800 via-neutral-700 to-neutral-600',
-  'from-gray-800 via-gray-700 to-gray-600',
-  'from-slate-900 via-indigo-900 to-slate-800',
-];
+import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { ArrowRight, LogIn, Plus } from 'lucide-react';
+import Modal from '@/components/Modal';
+import Loader from '@/components/ui/Loader';
+import EmptyState from '@/components/ui/EmptyState';
+import SubmitButton from '@/components/ui/SubmitButton';
+import { AnimatedCounter } from '@/components/ui/rare/animated-counter';
+import { useActionStatus } from '@/hooks/useActionStatus';
+import { useAuth } from '@/hooks/useAuth';
+import { housesApi } from '@/lib/endpoints';
+import { getApiErrorMessage } from '@/lib/api-error';
+import { queryKeys } from '@/lib/query-keys';
+import { computeNeedsYou, firstName, isOpen, memberName } from '@/lib/turn-status';
+import { dueSummary } from '@/lib/deadline';
+import type { House, HouseDashboard } from '@/types';
+
+function HouseCard({ house, dashboard, viewerId }: { house: House; dashboard?: HouseDashboard; viewerId?: string }) {
+  const members = dashboard?.house.members ?? house.members ?? [];
+  const active = members.filter((m) => m.status === 'active');
+  const chores = dashboard?.chores.items ?? [];
+  const open = chores.flatMap((c) => (c.activeInstance && isOpen(c.activeInstance.status) ? [c.activeInstance] : []));
+  const needs = computeNeedsYou(chores, dashboard?.voteStatuses ?? {}, viewerId, members).count;
+  const next = open
+    .filter((t) => t.status === 'pending')
+    .sort((a, b) => +new Date(a.deadline) - +new Date(b.deadline))[0];
+
+  return (
+    <Link
+      href={`/houses/${house.id}`}
+      className="group flex flex-col rounded-2xl border border-neutral-200 bg-white p-5 transition-colors hover:border-neutral-400"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-lg font-bold text-neutral-900">{house.name}</h3>
+          <p className="text-sm text-neutral-500">
+            {active.length} {active.length === 1 ? 'roommate' : 'roommates'}
+          </p>
+        </div>
+        <div className="flex -space-x-2">
+          {active.slice(0, 4).map((m) => (
+            <span
+              key={m.userId}
+              title={m.user?.name}
+              className="flex size-8 items-center justify-center rounded-full bg-neutral-900 text-xs font-bold text-white ring-2 ring-white"
+            >
+              {m.user?.name?.[0]?.toUpperCase() ?? '?'}
+            </span>
+          ))}
+          {active.length > 4 && (
+            <span className="flex size-8 items-center justify-center rounded-full bg-neutral-100 text-xs font-bold text-neutral-600 ring-2 ring-white">
+              +{active.length - 4}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-neutral-50 px-3 py-2">
+          <p className="text-xs text-neutral-500">Waiting on you</p>
+          <AnimatedCounter value={needs} className={`text-xl font-bold ${needs ? 'text-neutral-900' : 'text-neutral-400'}`} />
+        </div>
+        <div className="rounded-xl bg-neutral-50 px-3 py-2">
+          <p className="text-xs text-neutral-500">Open chores</p>
+          <AnimatedCounter value={open.length} className="text-xl font-bold text-neutral-900" />
+        </div>
+      </div>
+
+      <p className="mt-4 min-h-[20px] truncate text-sm text-neutral-600">
+        {!dashboard
+          ? 'Loading…'
+          : next
+            ? <>Next up: <span className="font-semibold text-neutral-900">{next.title}</span> · {next.assignedTo === viewerId ? 'you' : firstName(memberName(members, next.assignedTo))} · {dueSummary(next.deadline)}</>
+            : 'No turns waiting to be done.'}
+      </p>
+
+      <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-neutral-900">
+        Open house <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+      </span>
+    </Link>
+  );
+}
 
 export default function DashboardPage() {
-  const [houses, setHouses] = useState<House[]>([]);
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
-  // Create House modal state
+  const housesQ = useQuery({
+    queryKey: ['houses'],
+    queryFn: async () => (await housesApi.list()).data.data ?? [],
+  });
+  const houses = housesQ.data ?? [];
+  // Same cache entries the house pages use.
+  const dashboards = useQueries({
+    queries: houses.map((h) => ({
+      queryKey: queryKeys.houseDashboard(h.id, 'active'),
+      queryFn: async () => (await housesApi.dashboard(h.id, 'active')).data.data,
+    })),
+  });
+
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState('');
-  const [createAddr, setCreateAddr] = useState('');
-  const [creating, setCreating] = useState(false);
-
-  // Join House modal state
+  const createAction = useActionStatus();
   const [showJoin, setShowJoin] = useState(false);
   const [joinCode, setJoinCode] = useState('');
-  const [joining, setJoining] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await housesApi.list();
-      setHouses(res.data.data ?? []);
-    } catch {
-      toast.error('Failed to load houses');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  const joinAction = useActionStatus();
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCreating(true);
     try {
-      await housesApi.create({ name: createName, address: createAddr });
-      toast.success('House created!');
+      const { data } = await createAction.run(() => housesApi.create({ name: createName.trim() }));
+      toast.success('House created');
       setShowCreate(false);
-      setCreateName(''); setCreateAddr('');
-      load();
-    } catch {
-      toast.error('Failed to create house');
-    } finally {
-      setCreating(false);
+      setCreateName('');
+      queryClient.invalidateQueries({ queryKey: ['houses'] });
+      router.push(`/houses/${data.data.id}`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not create the house'));
     }
   };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setJoining(true);
     try {
-      await housesApi.join(joinCode.trim());
-      toast.success('Joined house!');
+      const { data } = await joinAction.run(() => housesApi.join(joinCode.trim()));
+      toast.success(`Joined ${data.data.name}`);
       setShowJoin(false);
       setJoinCode('');
-      load();
-    } catch {
-      toast.error('Invalid or expired invite code');
-    } finally {
-      setJoining(false);
+      queryClient.invalidateQueries({ queryKey: ['houses'] });
+      router.push(`/houses/${data.data.id}`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'That invite code did not work'));
     }
   };
 
   return (
-    <div>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h2 className="text-3xl font-bold text-[#171717] tracking-tight mb-2">Your Houses</h2>
-          <p className="text-[#737373] text-lg font-light">Manage your shared living spaces or join a new one.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-neutral-900">Your houses</h1>
+          <p className="mt-1 text-neutral-500">Pick a house to see its chores, expenses and chat.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => setShowJoin(true)}
-            className="flex items-center gap-2 bg-white border border-[#E5E5E5] hover:border-black text-[#171717] px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm text-sm"
-          >
-            <Icon name="login" size={18} className="text-[#737373]" />
-            Join via ID
+          <button type="button" className="btn-secondary" onClick={() => setShowJoin(true)}>
+            <LogIn className="size-4" />
+            Join with a code
           </button>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 bg-black hover:bg-neutral-800 text-white px-5 py-2.5 rounded-lg font-semibold transition-all shadow-md hover:shadow-lg text-sm"
-          >
-            <Icon name="add_home" size={18} />
-            Create New House
+          <button type="button" className="btn-primary" onClick={() => setShowCreate(true)}>
+            <Plus className="size-4" />
+            New house
           </button>
         </div>
       </div>
 
-      {/* Grid */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-[#E5E5E5] animate-pulse h-[380px]" />
-          ))}
-        </div>
+      {housesQ.isLoading ? (
+        <Loader label="Loading your houses" showLabel />
       ) : houses.length === 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {/* Empty-state "Create" card */}
-          <button
-            onClick={() => setShowCreate(true)}
-            className="group relative rounded-xl border border-dashed border-neutral-300 hover:border-black bg-neutral-50 hover:bg-white transition-all duration-300 flex flex-col items-center justify-center min-h-[380px] text-center p-8"
-          >
-            <div className="w-16 h-16 rounded-full bg-white border border-neutral-200 shadow-sm flex items-center justify-center mb-4 group-hover:scale-105 transition-transform duration-300 text-neutral-400 group-hover:text-black">
-              <Icon name="add" size={30} />
+        <EmptyState
+          title="No houses yet"
+          description="Create a house for your flat, or join one with the invite code a roommate shared."
+          action={
+            <div className="flex gap-3">
+              <button className="btn-secondary" onClick={() => setShowJoin(true)}>Join with a code</button>
+              <button className="btn-primary" onClick={() => setShowCreate(true)}>New house</button>
             </div>
-            <h3 className="text-lg font-bold text-[#171717] mb-2">Create New House</h3>
-            <p className="text-sm text-[#737373] max-w-[200px] font-light">Set up a new space to manage chores, bills and more.</p>
-          </button>
-        </div>
+          }
+        />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {houses.map((house, idx) => (
-            <article
-              key={house.id}
-              className="group bg-white rounded-xl border border-[#E5E5E5] shadow-sm hover:shadow-md hover:border-neutral-300 transition-all duration-300 flex flex-col overflow-hidden cursor-pointer"
-              onClick={() => router.push(`/houses/${house.id}`)}
-            >
-              {/* Cover */}
-              <div className={`h-48 w-full bg-gradient-to-br ${COVER_GRADIENTS[idx % COVER_GRADIENTS.length]} relative grayscale group-hover:grayscale-0 transition-all duration-500`}>
-                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors duration-500" />
-                {/* Status badge */}
-                <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-semibold text-[#171717] flex items-center gap-1.5 shadow-sm border border-neutral-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  Active
-                </div>
-                {/* House name overlaid */}
-                <div className="absolute bottom-5 left-5 text-white">
-                  <h3 className="text-xl font-bold leading-tight">{house.name}</h3>
-                  <p className="text-sm text-neutral-200 flex items-center gap-1 mt-1 font-light">
-                    <Icon name="group" size={14} />
-                    {house.members?.length ?? 0} member{(house.members?.length ?? 0) !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="p-6 flex flex-col flex-1">
-                {/* Member avatars */}
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex -space-x-2">
-                    {(house.members ?? []).slice(0, 3).map((m, mi) => (
-                      <div
-                        key={m.userId ?? mi}
-                        className="w-8 h-8 rounded-full border-2 border-white bg-neutral-200 flex items-center justify-center text-xs font-bold text-neutral-600"
-                      >
-                        {m.user?.name?.[0]?.toUpperCase() ?? '?'}
-                      </div>
-                    ))}
-                    {(house.members?.length ?? 0) > 3 && (
-                      <div className="w-8 h-8 rounded-full border-2 border-white bg-neutral-100 flex items-center justify-center text-xs font-bold text-[#737373]">
-                        +{(house.members?.length ?? 0) - 3}
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-xs text-[#737373] font-medium px-2 py-1 bg-neutral-50 rounded border border-neutral-100">
-                    {house.members?.length ?? 0} Members
-                  </span>
-                </div>
-
-                {/* Info rows */}
-                <div className="space-y-4 mb-8">
-                  <div className="flex items-center justify-between text-sm py-2 border-b border-dashed border-neutral-200">
-                    <span className="text-[#737373] flex items-center gap-2">
-                      <Icon name="cleaning_services" size={18} />
-                      Next Chore
-                    </span>
-                    <span className="font-medium text-[#171717]">—</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm py-2 border-b border-dashed border-neutral-200">
-                    <span className="text-[#737373] flex items-center gap-2">
-                      <Icon name="receipt_long" size={18} />
-                      Next Bill
-                    </span>
-                    <span className="font-medium text-[#171717]">—</span>
-                  </div>
-                </div>
-
-                {/* Enter button */}
-                <button className="mt-auto w-full py-2.5 bg-white border border-neutral-200 text-[#171717] font-semibold rounded-lg hover:bg-black hover:text-white hover:border-black transition-all flex items-center justify-center gap-2 group/btn text-sm">
-                  Enter House
-                  <Icon name="arrow_forward" size={16} className="transition-transform group-hover/btn:translate-x-1" />
-                </button>
-              </div>
-            </article>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {houses.map((house, i) => (
+            <HouseCard key={house.id} house={house} dashboard={dashboards[i]?.data} viewerId={user?.id} />
           ))}
-
-          {/* "Create New" card */}
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowCreate(true); }}
-            className="group relative rounded-xl border border-dashed border-neutral-300 hover:border-black bg-neutral-50 hover:bg-white transition-all duration-300 flex flex-col items-center justify-center min-h-[380px] text-center p-8"
-          >
-            <div className="w-16 h-16 rounded-full bg-white border border-neutral-200 shadow-sm flex items-center justify-center mb-4 group-hover:scale-105 transition-transform duration-300 text-neutral-400 group-hover:text-black">
-              <Icon name="add" size={30} />
-            </div>
-            <h3 className="text-lg font-bold text-[#171717] mb-2">Create New House</h3>
-            <p className="text-sm text-[#737373] max-w-[200px] font-light">Set up a new space to manage chores, bills and more.</p>
-          </button>
         </div>
       )}
 
-      {/* Create House Modal */}
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create a House">
-        <form onSubmit={handleCreate} className="flex flex-col gap-4">
-          <div>
-            <label className="label">House Name</label>
-            <input className="input" placeholder="e.g. The Lakeview Pad" value={createName}
-              onChange={e => setCreateName(e.target.value)} required />
-          </div>
-          <div>
-            <label className="label">Address (optional)</label>
-            <input className="input" placeholder="123 Main St" value={createAddr}
-              onChange={e => setCreateAddr(e.target.value)} />
-          </div>
-          <div className="flex gap-3 mt-2">
+      <Modal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="New house"
+        footer={
+          <div className="flex gap-3">
             <button type="button" className="btn-secondary flex-1" onClick={() => setShowCreate(false)}>Cancel</button>
-            <button type="submit" className="btn-primary flex-1" disabled={creating}>
-              {creating ? 'Creating…' : 'Create'}
-            </button>
+            <SubmitButton
+              form="create-house-form"
+              status={createAction.status}
+              className="flex-1"
+              disabled={createName.trim().length < 2}
+              labels={{ running: 'Creating…', done: 'Created', failed: 'Try again' }}
+            >
+              Create house
+            </SubmitButton>
           </div>
+        }
+      >
+        <form id="create-house-form" onSubmit={handleCreate} className="flex flex-col gap-2">
+          <label className="label" htmlFor="house-name">House name</label>
+          <input
+            id="house-name"
+            className="input"
+            placeholder="e.g. Maple Street Flat"
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value)}
+            minLength={2}
+            maxLength={100}
+            required
+          />
+          <p className="text-sm text-neutral-500">You&apos;ll be the admin. Invite roommates with the code on the house page.</p>
         </form>
       </Modal>
 
-      {/* Join House Modal */}
-      <Modal open={showJoin} onClose={() => setShowJoin(false)} title="Join a House">
-        <form onSubmit={handleJoin} className="flex flex-col gap-4">
-          <div>
-            <label className="label">Invite Code</label>
-            <input className="input" placeholder="Paste invite code here" value={joinCode}
-              onChange={e => setJoinCode(e.target.value)} required />
-          </div>
-          <div className="flex gap-3 mt-2">
+      <Modal
+        open={showJoin}
+        onClose={() => setShowJoin(false)}
+        title="Join a house"
+        footer={
+          <div className="flex gap-3">
             <button type="button" className="btn-secondary flex-1" onClick={() => setShowJoin(false)}>Cancel</button>
-            <button type="submit" className="btn-primary flex-1" disabled={joining}>
-              {joining ? 'Joining…' : 'Join'}
-            </button>
+            <SubmitButton
+              form="join-house-form"
+              status={joinAction.status}
+              className="flex-1"
+              disabled={joinCode.trim().length < 4}
+              labels={{ running: 'Joining…', done: 'Joined', failed: 'Try again' }}
+            >
+              Join house
+            </SubmitButton>
           </div>
+        }
+      >
+        <form id="join-house-form" onSubmit={handleJoin} className="flex flex-col gap-2">
+          <label className="label" htmlFor="invite-code">Invite code</label>
+          <input
+            id="invite-code"
+            className="input font-mono uppercase tracking-widest"
+            placeholder="6AA399FF"
+            value={joinCode}
+            onChange={(e) => setJoinCode(e.target.value)}
+            required
+          />
+          <p className="text-sm text-neutral-500">Ask a roommate for it. It&apos;s on their house page.</p>
         </form>
       </Modal>
     </div>

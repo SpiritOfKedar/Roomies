@@ -1,91 +1,117 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { Icon } from '@/components/Icon';
-import FileUpload from '@/components/ui/FileUpload';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowUp, ImagePlus, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface Props {
-  onSend: (body: string, image: File | null) => Promise<void>;
+  /** Resolves true when the message was sent; on failure the text is kept */
+  onSend: (body: string, image: File | null) => Promise<boolean>;
   sending: boolean;
 }
 
+const ACCEPT = 'image/jpeg,image/png,image/gif,image/webp';
+
+/** One rounded field: attach on the left, send on the right, image preview inside. */
 export default function ChatComposer({ onSend, sending }: Props) {
   const [body, setBody] = useState('');
   const [image, setImage] = useState<File | null>(null);
-  const [showAttach, setShowAttach] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!image) {
+      setPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(image);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [image]);
 
   const canSend = body.trim().length > 0 && !sending;
 
+  const resize = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  };
+
   const submit = async () => {
     if (!canSend) return;
-    const text = body.trim();
+    const ok = await onSend(body.trim(), image);
+    if (!ok) return;
     setBody('');
     setImage(null);
-    setShowAttach(false);
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    await onSend(text, image);
-  };
-
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void submit();
-    }
-  };
-
-  const onInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setBody(e.target.value);
-    const el = e.target;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    if (fileRef.current) fileRef.current.value = '';
+    requestAnimationFrame(resize);
+    textareaRef.current?.focus();
   };
 
   return (
-    <div className="shrink-0 border-t border-neutral-200 bg-white p-3">
-      {showAttach && (
-        <div className="mb-3">
-          <FileUpload file={image} onChange={setImage} compact hint="Images only" />
+    <div className="shrink-0 border-t border-neutral-100 px-6 py-4">
+      <div className="rounded-3xl border border-neutral-200 bg-white transition-colors focus-within:border-neutral-400">
+        {preview && (
+          <div className="relative ml-3 mt-3 w-fit">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={preview} alt="Image to send" className="h-20 rounded-xl object-cover" />
+            <button
+              type="button"
+              onClick={() => {
+                setImage(null);
+                if (fileRef.current) fileRef.current.value = '';
+              }}
+              aria-label="Remove image"
+              className="absolute -right-2 -top-2 flex size-6 items-center justify-center rounded-full bg-neutral-900 text-white"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
+        <div className="flex items-end gap-1 p-1.5">
+          <input ref={fileRef} type="file" accept={ACCEPT} className="hidden" onChange={(e) => setImage(e.target.files?.[0] ?? null)} />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            aria-label="Attach an image"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+          >
+            <ImagePlus className="size-5" />
+          </button>
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            value={body}
+            onChange={(e) => {
+              setBody(e.target.value);
+              resize();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void submit();
+              }
+            }}
+            placeholder="Message the house"
+            aria-label="Message the house. Enter to send, Shift+Enter for a new line"
+            className="scrollbar-thin max-h-[140px] min-h-[36px] flex-1 resize-none bg-transparent px-2 py-2 text-[15px] text-neutral-900 placeholder-neutral-400 focus:outline-none"
+          />
+          <button
+            type="button"
+            disabled={!canSend}
+            onClick={() => void submit()}
+            aria-label="Send"
+            className={cn(
+              'flex size-9 shrink-0 items-center justify-center rounded-full transition-colors',
+              canSend ? 'bg-neutral-900 text-white hover:bg-neutral-700' : 'bg-neutral-100 text-neutral-400',
+            )}
+          >
+            <ArrowUp className="size-5" />
+          </button>
         </div>
-      )}
-
-      <div className="flex items-end gap-2">
-        <button
-          type="button"
-          onClick={() => setShowAttach((v) => !v)}
-          className={`flex size-10 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-            showAttach
-              ? 'border-neutral-900 bg-neutral-900 text-white'
-              : 'border-neutral-200 text-neutral-500 hover:bg-neutral-50'
-          }`}
-          title="Attach image"
-        >
-          <Icon name="image" size={18} />
-        </button>
-
-        <textarea
-          ref={textareaRef}
-          rows={1}
-          value={body}
-          onChange={onInput}
-          onKeyDown={onKeyDown}
-          placeholder="Message your house… (Enter to send)"
-          className="max-h-[120px] min-h-[40px] flex-1 resize-none rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm text-neutral-900 placeholder-neutral-400 focus:border-neutral-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
-        />
-
-        <button
-          type="button"
-          disabled={!canSend}
-          onClick={() => void submit()}
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-neutral-900 text-white transition-all hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
-          title="Send"
-        >
-          <Icon name="arrow_forward" size={18} />
-        </button>
       </div>
-      <p className="mt-2 hidden text-center text-[10px] text-neutral-400 sm:block">
-        Enter to send · Shift+Enter for new line
-      </p>
     </div>
   );
 }

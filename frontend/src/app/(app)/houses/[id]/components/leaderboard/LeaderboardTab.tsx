@@ -5,6 +5,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useHouseLeaderboard } from './useHouseLeaderboard';
 import LeaderboardPodium from './LeaderboardPodium';
 import LeaderboardRankList from './LeaderboardRankList';
+import Loader from '@/components/ui/Loader';
+import EmptyState from '@/components/ui/EmptyState';
 
 interface Props {
   houseId: string;
@@ -16,23 +18,13 @@ export default function LeaderboardTab({ houseId }: Props) {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-48 animate-pulse rounded-xl bg-neutral-100" />
-          ))}
-        </div>
-      </div>
+      <Loader label="Loading leaderboard" />
     );
   }
 
   if (entries.length === 0) {
     return (
-      <div className="rounded-xl border border-neutral-200 bg-white py-16 text-center">
-        <Icon name="leaderboard" size={48} className="mx-auto mb-3 text-neutral-300" />
-        <p className="text-lg font-semibold text-neutral-800">No leaderboard data yet</p>
-        <p className="mt-1 text-sm text-neutral-500">Complete tasks to start earning points</p>
-      </div>
+      <EmptyState title="No scores yet" description="Points appear here once housemates finish approved turns." />
     );
   }
 

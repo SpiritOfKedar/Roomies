@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import { Icon } from '@/components/Icon';
+import Loader from '@/components/ui/Loader';
 
 const MEDAL_COLORS = [
   { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', icon: 'emoji_events' },
@@ -136,7 +137,7 @@ export default function CommunityPage() {
             <Icon name="emoji_events" size={18} className="text-amber-500" />
           </div>
           <span className="text-3xl font-extrabold text-amber-600">
-            #{leaderboard.findIndex(e => e.userId === user?.id) + 1 || '—'}
+            {leaderboard.findIndex(e => e.userId === user?.id) >= 0 ? `#${leaderboard.findIndex(e => e.userId === user?.id) + 1}` : 'Unranked'}
           </span>
         </div>
         <div className="card flex flex-col gap-2">
@@ -186,9 +187,7 @@ export default function CommunityPage() {
           </h2>
 
           {loading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => <div key={i} className="h-16 rounded-2xl bg-neutral-100 animate-pulse" />)}
-            </div>
+            <Loader label="Loading" />
           ) : leaderboard.length === 0 ? (
             <div className="text-center py-16 card">
               <Icon name="leaderboard" size={48} className="text-neutral-300 mb-2" />
@@ -281,9 +280,7 @@ export default function CommunityPage() {
           </h2>
 
           {loading ? (
-            <div className="space-y-3">
-              {[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-2xl bg-neutral-100 animate-pulse" />)}
-            </div>
+            <Loader label="Loading" />
           ) : (
             <div className="space-y-3">
               {Array.from(allMembers.entries()).map(([userId, member], idx) => {

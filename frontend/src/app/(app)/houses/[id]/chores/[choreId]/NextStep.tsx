@@ -84,7 +84,7 @@ function Proof({ submission }: { submission?: ChoreThreadSubmission }) {
         <img src={url} alt="Proof photo" className="max-h-80 w-full rounded-xl border border-neutral-200 bg-white object-contain" />
       ) : (
         <p className="rounded-xl border border-dashed border-neutral-300 bg-white p-4 text-sm text-neutral-500">
-          No photo — judge from the note and the chore itself.
+          No photo was added. Judge from the note and the chore itself.
         </p>
       )}
       {submission.clarification && (
@@ -116,7 +116,7 @@ function ReviewForm({ task, submission, onChanged }: { task: Task; submission?: 
       const result = data.data;
       if (result.finalStatus === 'completed') {
         toast.success(
-          result.rotation?.assigneeName ? `Approved — next turn goes to ${result.rotation.assigneeName}` : 'Approved — chore done',
+          result.rotation?.assigneeName ? `Approved. Next turn goes to ${result.rotation.assigneeName}` : 'Approved. Chore done',
         );
       } else if (result.finalStatus === 'disputed') toast.success('Changes requested');
       else toast.success(vote === 'approve' ? 'Approval recorded' : 'Feedback recorded');
@@ -207,11 +207,11 @@ export default function NextStep({ houseId, choreTitle, task, cycle, vote, membe
   switch (task.status) {
     case 'pending':
       return isMine ? (
-        <Panel title={`Your turn — ${dueSummary(task.deadline)}`}>
+        <Panel title={`Your turn, ${dueSummary(task.deadline)}`}>
           <SubmitProofForm houseId={houseId} taskId={task.id} onDone={onChanged} submitLabel="Mark done & send for review" />
         </Panel>
       ) : (
-        <Panel title={`${firstName(assignee)}'s turn — ${dueSummary(task.deadline)}`}>
+        <Panel title={`${firstName(assignee)}'s turn, ${dueSummary(task.deadline)}`}>
           <p className="text-sm text-neutral-600">Nothing for you to do yet. You&apos;ll review the proof once it&apos;s handed in.</p>
           {viewerActive && (
             <div className="mt-4">
@@ -283,7 +283,7 @@ export default function NextStep({ houseId, choreTitle, task, cycle, vote, membe
             {retriesLeft > 0 ? (
               <SubmitProofForm houseId={houseId} taskId={task.id} isResubmit onDone={onChanged} />
             ) : (
-              <p className="text-sm text-neutral-600">No retries left — ask an admin if this needs another look.</p>
+              <p className="text-sm text-neutral-600">No retries left. Ask an admin if this needs another look.</p>
             )}
           </div>
         </Panel>
@@ -297,7 +297,7 @@ export default function NextStep({ houseId, choreTitle, task, cycle, vote, membe
     case 'completed': {
       const approvers = (latest?.votes ?? []).filter((v) => v.vote === 'approve').map((v) => firstName(v.userName));
       return (
-        <Panel tone="success" title={isMine ? 'Done — nice work' : `Done by ${firstName(assignee)}`}>
+        <Panel tone="success" title={isMine ? 'Done, nice work' : `Done by ${firstName(assignee)}`}>
           <p className="text-sm text-neutral-700">
             {approvers.length ? `Approved by ${listNames(approvers)}.` : 'Completed.'}
           </p>

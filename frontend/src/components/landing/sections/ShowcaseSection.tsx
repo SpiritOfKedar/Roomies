@@ -114,7 +114,7 @@ function ChatMock() {
       <div className="flex flex-row-reverse gap-2">
         <div className="h-6 w-6 shrink-0 rounded-full bg-white/20" />
         <div className="rounded-2xl rounded-tr-sm bg-white/10 px-3 py-2 text-[11px] text-landing-fg">
-          Rotation says it&apos;s Alex — check the app
+          Rotation says it&apos;s Alex. Check the app
         </div>
       </div>
     </div>
@@ -190,7 +190,7 @@ export function ShowcaseSection({ reducedMotion }: ShowcaseSectionProps) {
           Showcase
         </h2>
         <p className="mx-auto mt-4 max-w-md text-center text-sm text-landing-muted md:text-base">
-          Everything your household needs — chores, bills, votes, and accountability in one place.
+          Everything your household needs in one place: chores, bills, votes and accountability.
         </p>
 
         <div className="mt-16 grid grid-cols-1 gap-4 md:grid-cols-3">

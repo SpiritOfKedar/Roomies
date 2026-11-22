@@ -61,7 +61,7 @@ export default function LeaderboardRankList({
               {entry.penaltyPoints > 0 ? (
                 <span className="font-semibold text-red-600">−{entry.penaltyPoints}</span>
               ) : (
-                <span className="text-neutral-400">—</span>
+                <span className="text-neutral-400">0</span>
               )}
             </div>
           </div>

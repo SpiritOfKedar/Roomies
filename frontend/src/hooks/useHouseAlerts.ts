@@ -38,9 +38,9 @@ export function useHouseAlerts(houseId: string) {
       // Ask only in response to the user switching alerts on.
       if (Notification.permission === 'default') {
         const result = await Notification.requestPermission();
-        if (result === 'denied') toast("Browser notifications are blocked — you'll still see the badge here.");
+        if (result === 'denied') toast("Browser notifications are blocked. You'll still see the badge here.");
       } else if (Notification.permission === 'denied') {
-        toast("Browser notifications are blocked — you'll still see the badge here.");
+        toast("Browser notifications are blocked. You'll still see the badge here.");
       }
     },
     [houseId],

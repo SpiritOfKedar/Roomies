@@ -167,7 +167,7 @@ export default function RegisterPage() {
             Why Roomies?
           </p>
           <p className="text-2xl font-bold leading-snug text-landing-fg">
-            &ldquo;Track tasks, split expenses, keep the peace — all in one place.&rdquo;
+            &ldquo;Track tasks, split expenses, keep the peace, all in one place.&rdquo;
           </p>
           <footer className="mt-8 flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-lg font-bold ring-2 ring-white/10">

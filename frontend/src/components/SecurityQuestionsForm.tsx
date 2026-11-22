@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { usersApi } from '@/lib/endpoints';
 import { getApiErrorMessage } from '@/lib/api-error';
 import type { RecoveryStatus, SecurityQuestionOption } from '@/types';
+import Select from '@/components/ui/Select';
+import SubmitButton from '@/components/ui/SubmitButton';
+import SlideToConfirm from '@/components/ui/SlideToConfirm';
 
 interface QuestionRow {
   questionId: string;
@@ -81,10 +84,7 @@ export function SecurityQuestionsForm({ status, onSaved }: SecurityQuestionsForm
       setError('Enter your current password to remove security questions.');
       return;
     }
-    if (!confirm('Remove all security questions? You will not be able to recover via questions.')) {
-      return;
-    }
-
+    // Confirmation is the slide gesture itself (no browser confirm dialog).
     setRemoving(true);
     setError(null);
     setSuccess(null);
@@ -122,22 +122,13 @@ export function SecurityQuestionsForm({ status, onSaved }: SecurityQuestionsForm
 
       {rows.map((row, index) => (
         <div key={index} className="space-y-2">
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-semibold text-[#111827]">Question {index + 1}</span>
-            <select
-              className="h-11 rounded-lg border border-[#e5e7eb] bg-[#f9fafb] px-3 text-sm text-[#111827] focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
-              value={row.questionId}
-              onChange={(e) => updateRow(index, { questionId: e.target.value })}
-              required
-            >
-              <option value="">Select a question</option>
-              {availableForRow(index).map((q) => (
-                <option key={q.questionId} value={q.questionId}>
-                  {q.text}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label={`Question ${index + 1}`}
+            value={row.questionId}
+            onChange={(v) => updateRow(index, { questionId: v })}
+            placeholder="Pick a question"
+            options={availableForRow(index).map((q) => ({ value: q.questionId, label: q.text }))}
+          />
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-[#374151]">Your answer</span>
             <input
@@ -166,25 +157,27 @@ export function SecurityQuestionsForm({ status, onSaved }: SecurityQuestionsForm
         </label>
       )}
 
-      <div className="flex flex-wrap gap-3 pt-2">
-        <button
-          type="submit"
-          disabled={loading}
-          className="btn-primary disabled:opacity-60"
+      <div className="pt-2">
+        <SubmitButton
+          status={loading ? 'running' : 'idle'}
+          labels={{ running: 'Saving…' }}
         >
-          {loading ? 'Saving…' : status.hasSecurityQuestions ? 'Update questions' : 'Save questions'}
-        </button>
-        {status.hasSecurityQuestions && (
-          <button
-            type="button"
-            onClick={handleRemove}
-            disabled={removing}
-            className="btn-danger disabled:opacity-60"
-          >
-            {removing ? 'Removing…' : 'Remove questions'}
-          </button>
-        )}
+          {status.hasSecurityQuestions ? 'Update questions' : 'Save questions'}
+        </SubmitButton>
       </div>
+      {status.hasSecurityQuestions && (
+        <div className="border-t border-neutral-100 pt-4">
+          <p className="text-sm font-semibold text-neutral-900">Remove security questions</p>
+          <p className="mt-1 text-sm text-neutral-500">You won&apos;t be able to recover your account with questions any more.</p>
+          <SlideToConfirm
+            className="mt-3"
+            label="Slide to remove questions"
+            status={removing ? 'running' : 'idle'}
+            onConfirm={handleRemove}
+            labels={{ running: 'Removing…' }}
+          />
+        </div>
+      )}
     </form>
   );
 }

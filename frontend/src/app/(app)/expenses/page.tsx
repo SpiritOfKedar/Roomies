@@ -8,6 +8,14 @@ import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { formatINR } from '@/lib/currency';
 import { Icon } from '@/components/Icon';
+import Loader from '@/components/ui/Loader';
+import EmptyState from '@/components/ui/EmptyState';
+import Select from '@/components/ui/Select';
+import SubmitButton from '@/components/ui/SubmitButton';
+import FileUpload from '@/components/ui/FileUpload';
+import { AnimatedCounter } from '@/components/ui/rare/animated-counter';
+import { useActionStatus } from '@/hooks/useActionStatus';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 const CATEGORY_ICONS = ['wifi', 'shopping_cart', 'water_drop', 'cleaning_services', 'restaurant', 'local_gas_station', 'electric_bolt', 'build'];
 
@@ -24,7 +32,7 @@ export default function ExpensesPage() {
   const [addTitle, setAddTitle] = useState('');
   const [addAmount, setAddAmount] = useState('');
   const [addReceipt, setAddReceipt] = useState<File | null>(null);
-  const [adding, setAdding] = useState(false);
+  const addAction = useActionStatus();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,22 +68,19 @@ export default function ExpensesPage() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedHouse) { toast.error('Select a house'); return; }
-    setAdding(true);
+    if (!selectedHouse) { toast.error('Pick a house'); return; }
     try {
       const fd = new FormData();
       fd.append('description', addTitle);
       fd.append('amount', addAmount);
       if (addReceipt) fd.append('receipt', addReceipt);
-      await expensesApi.create(selectedHouse, fd);
+      await addAction.run(() => expensesApi.create(selectedHouse, fd));
       toast.success('Expense added!');
       setShowAdd(false);
       setAddTitle(''); setAddAmount(''); setAddReceipt(null); setSelectedHouse('');
       load();
-    } catch {
-      toast.error('Failed to add expense');
-    } finally {
-      setAdding(false);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not add the expense'));
     }
   };
 
@@ -124,37 +129,29 @@ export default function ExpensesPage() {
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">Total Spending</span>
             <Icon name="account_balance_wallet" size={18} className="text-[#737373]" />
           </div>
-          <span className="text-3xl font-extrabold text-[#171717]">{formatINR(totalSpending)}</span>
+          <AnimatedCounter value={totalSpending} prefix="₹" grouping="indian" decimals={Number.isInteger(Math.round(totalSpending * 100) / 100) ? 0 : 2} className={"text-3xl font-extrabold text-[#171717]"} />
         </div>
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">You are owed</span>
             <Icon name="arrow_upward" size={18} className="text-emerald-500" />
           </div>
-          <span className="text-3xl font-extrabold text-emerald-600">+{formatINR(totalOwedToYou)}</span>
+          <AnimatedCounter value={totalOwedToYou} prefix="+₹" grouping="indian" decimals={Number.isInteger(Math.round(totalOwedToYou * 100) / 100) ? 0 : 2} className={"text-3xl font-extrabold text-emerald-600"} />
         </div>
         <div className="card flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#737373] uppercase tracking-wider">You owe</span>
             <Icon name="arrow_downward" size={18} className="text-red-500" />
           </div>
-          <span className={`text-3xl font-extrabold ${totalOwed > 0 ? 'text-red-600' : 'text-[#737373]'}`}>
-            {formatINR(totalOwed)}
-          </span>
+          <AnimatedCounter value={totalOwed} prefix="₹" grouping="indian" decimals={Number.isInteger(Math.round(totalOwed * 100) / 100) ? 0 : 2} className={`text-3xl font-extrabold ${totalOwed > 0 ? 'text-red-600' : 'text-[#737373]'}`} />
         </div>
       </div>
 
       {/* Expense List */}
       {loading ? (
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-20 rounded-2xl bg-neutral-100 animate-pulse" />)}
-        </div>
+        <Loader label="Loading expenses" />
       ) : allExpenses.length === 0 ? (
-        <div className="text-center py-20">
-          <Icon name="receipt_long" size={56} className="text-neutral-300 mb-3" />
-          <p className="text-lg font-semibold text-[#171717]">No expenses yet</p>
-          <p className="text-sm text-[#737373] mt-1">Add an expense to get started</p>
-        </div>
+        <EmptyState title="No expenses yet" description="Add something you paid for and it gets split with your roommates." />
       ) : (
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
           {/* Header */}
@@ -252,15 +249,33 @@ export default function ExpensesPage() {
       )}
 
       {/* Add Expense Modal */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Expense">
-        <form onSubmit={handleAdd} className="flex flex-col gap-4">
-          <div>
-            <label className="label">House</label>
-            <select className="input" value={selectedHouse} onChange={e => setSelectedHouse(e.target.value)} required>
-              <option value="">Select a house…</option>
-              {houses.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-            </select>
+      <Modal
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="Add an expense"
+        footer={
+          <div className="flex gap-3">
+            <button type="button" className="btn-secondary flex-1" onClick={() => setShowAdd(false)}>Cancel</button>
+            <SubmitButton
+              form="global-expense-form"
+              status={addAction.status}
+              className="flex-1"
+              disabled={!selectedHouse || !addTitle.trim() || !(Number(addAmount) > 0)}
+              labels={{ running: addReceipt ? 'Uploading receipt…' : 'Adding…', done: 'Added', failed: 'Try again' }}
+            >
+              Add expense
+            </SubmitButton>
           </div>
+        }
+      >
+        <form id="global-expense-form" onSubmit={handleAdd} className="flex flex-col gap-4">
+          <Select
+            label="House"
+            value={selectedHouse}
+            onChange={setSelectedHouse}
+            placeholder="Pick a house"
+            options={houses.map((h) => ({ value: h.id, label: h.name, tag: `${h.members?.filter((m) => m.status === 'active').length ?? 0} people` }))}
+          />
           <div>
             <label className="label">Description</label>
             <input className="input" placeholder="Groceries, Utilities…" value={addTitle}
@@ -271,17 +286,13 @@ export default function ExpensesPage() {
             <input className="input" type="number" min="0.01" step="0.01" placeholder="0.00"
               value={addAmount} onChange={e => setAddAmount(e.target.value)} required />
           </div>
-          <div>
-            <label className="label">Receipt (optional)</label>
-            <input className="input" type="file" accept="image/*,application/pdf"
-              onChange={e => setAddReceipt(e.target.files?.[0] ?? null)} />
-          </div>
-          <div className="flex gap-3 mt-2">
-            <button type="button" className="btn-secondary flex-1" onClick={() => setShowAdd(false)}>Cancel</button>
-            <button type="submit" className="btn-primary flex-1" disabled={adding}>
-              {adding ? 'Adding…' : 'Add Expense'}
-            </button>
-          </div>
+          <FileUpload
+            label="Receipt (optional)"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            file={addReceipt}
+            onChange={setAddReceipt}
+            hint="JPEG, PNG, GIF or WebP · up to 5 MB"
+          />
         </form>
       </Modal>
     </div>
