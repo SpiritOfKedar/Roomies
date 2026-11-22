@@ -1,7 +1,7 @@
 'use client';
 
 import { Icon } from '@/components/Icon';
-import { formatINR } from '@/lib/currency';
+import { AnimatedCounter } from '@/components/ui/rare/animated-counter';
 
 interface Props {
   totalSpending: number;
@@ -13,21 +13,24 @@ export default function ExpenseSummaryCards({ totalSpending, owedToYou, youOwe }
   const cards = [
     {
       label: 'Total Spending',
-      value: formatINR(totalSpending),
+      value: totalSpending,
+      prefix: '₹',
       icon: 'receipt_long',
       valueClass: 'text-neutral-900',
       iconBg: 'bg-neutral-100 text-neutral-600',
     },
     {
       label: 'You are owed',
-      value: `+${formatINR(owedToYou)}`,
+      value: owedToYou,
+      prefix: '+₹',
       icon: 'arrow_upward',
       valueClass: 'text-emerald-600',
       iconBg: 'bg-emerald-50 text-emerald-600',
     },
     {
       label: 'You owe',
-      value: formatINR(youOwe),
+      value: youOwe,
+      prefix: '₹',
       icon: youOwe > 0 ? 'arrow_downward' : 'check',
       valueClass: youOwe > 0 ? 'text-red-600' : 'text-neutral-500',
       iconBg: youOwe > 0 ? 'bg-red-50 text-red-500' : 'bg-neutral-100 text-neutral-500',
@@ -49,9 +52,13 @@ export default function ExpenseSummaryCards({ totalSpending, owedToYou, youOwe }
               <Icon name={card.icon} size={18} />
             </span>
           </div>
-          <p className={`text-2xl font-extrabold tracking-tight ${card.valueClass}`}>
-            {card.value}
-          </p>
+          <AnimatedCounter
+            value={card.value}
+            prefix={card.prefix}
+            grouping="indian"
+            decimals={Number.isInteger(Math.round(card.value * 100) / 100) ? 0 : 2}
+            className={`text-2xl font-extrabold tracking-tight ${card.valueClass}`}
+          />
         </div>
       ))}
     </div>

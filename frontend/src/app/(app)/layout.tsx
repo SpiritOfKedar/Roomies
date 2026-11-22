@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import Sidebar from '@/components/Sidebar';
+import Loader from '@/components/ui/Loader';
 
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === 'true';
 
@@ -17,11 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [user, loading, router]);
 
   if (!SKIP_AUTH && (loading || !user)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
-        <div className="w-8 h-8 border-4 border-neutral-900 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <Loader fullscreen size={80} label="Signing you in" />;
   }
 
   return (

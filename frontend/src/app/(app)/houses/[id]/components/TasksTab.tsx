@@ -1,781 +1,193 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { tasksApi } from '@/lib/endpoints';
-import { useHouseDashboard } from '@/hooks/useHouseDashboard';
-import type { Task, HouseMember, House, HouseDashboard } from '@/types';
-import Modal from '@/components/Modal';
+import { Plus } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import toast from 'react-hot-toast';
-import { format } from 'date-fns';
-import VoteModal from './tasks/VoteModal';
-import ResubmitModal from './tasks/ResubmitModal';
-import TaskDetailsModal from './tasks/TaskDetailsModal';
-import AssignTaskModal from './tasks/AssignTaskModal';
-import type { TaskVoteStatus, VoteResult } from '@/types';
-import { queryKeys } from '@/lib/query-keys';
-import { Icon } from '@/components/Icon';
-import DatePicker from '@/components/ui/DatePicker';
+import { useHouseDashboard } from '@/hooks/useHouseDashboard';
+import { HookSidebar } from '@/components/ui/rare/hook-sidebar';
+import Loader from '@/components/ui/Loader';
+import EmptyState from '@/components/ui/EmptyState';
+import { computeNeedsYou, isOpen } from '@/lib/turn-status';
+import type { Chore, House, HouseDashboard, HouseMember } from '@/types';
+import TurnRow from './tasks/TurnRow';
+import MyTurnsList from './tasks/MyTurnsList';
+import NewChoreModal from './tasks/NewChoreModal';
+
+export type TaskView = 'needs' | 'progress' | 'finished';
+const VIEWS: TaskView[] = ['needs', 'progress', 'finished'];
 
 interface Props {
   house: House;
   members: HouseMember[];
   isAdmin: boolean;
   prefetchedDashboard?: HouseDashboard;
+  view: TaskView;
+  onViewChange: (view: TaskView) => void;
 }
 
-const TASK_ICON_STYLES = [
-  { bg: 'bg-blue-500/10', text: 'text-blue-400', ring: 'ring-blue-500/20', icon: 'water_drop' },
-  { bg: 'bg-orange-500/10', text: 'text-orange-400', ring: 'ring-orange-500/20', icon: 'delete' },
-  { bg: 'bg-purple-500/10', text: 'text-purple-400', ring: 'ring-purple-500/20', icon: 'wifi' },
-  { bg: 'bg-green-500/10', text: 'text-green-400', ring: 'ring-green-500/20', icon: 'cleaning_services' },
-  { bg: 'bg-pink-500/10', text: 'text-pink-400', ring: 'ring-pink-500/20', icon: 'shopping_cart' },
-];
-
-function statusBadgeClass(status: string) {
-  switch (status) {
-    case 'pending':
-      return 'bg-neutral-50 text-neutral-600 ring-neutral-500/10';
-    case 'submitted':
-      return 'bg-blue-50 text-blue-700 ring-blue-700/10';
-    case 'completed':
-      return 'bg-green-50 text-green-700 ring-green-600/20';
-    case 'disputed':
-      return 'bg-amber-50 text-amber-800 ring-amber-500/30';
-    case 'expired':
-    case 'rejected':
-      return 'bg-red-50 text-red-700 ring-red-600/10';
-    default:
-      return 'bg-neutral-50 text-neutral-600 ring-neutral-500/10';
-  }
+function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
+        {title}
+        {count != null && <span className="ml-1.5 text-neutral-400">{count}</span>}
+      </h3>
+      {children}
+    </section>
+  );
 }
 
-export default function TasksTab({ house, members, isAdmin, prefetchedDashboard }: Props) {
+export default function TasksTab({ house, members, isAdmin, prefetchedDashboard, view, onViewChange }: Props) {
   const houseId = house.id;
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
+  const [showNew, setShowNew] = useState(false);
 
-  const [showAssign, setShowAssign] = useState(false);
-  const [assignTitle, setAssignTitle] = useState('');
-  const [assignDesc, setAssignDesc] = useState('');
-  const [assignDue, setAssignDue] = useState('');
-  const [assignUser, setAssignUser] = useState('');
-  const [assignWeight, setAssignWeight] = useState(1);
-  const [assignIsRecurring, setAssignIsRecurring] = useState(false);
-  const [assignCronSchedule, setAssignCronSchedule] = useState('');
-  const [assigning, setAssigning] = useState(false);
-
-  const [submitTask, setSubmitTask] = useState<Task | null>(null);
-  const [proofFile, setProofFile] = useState<File | null>(null);
-  const [proofNote, setProofNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const [voteTask, setVoteTask] = useState<Task | null>(null);
-  const [resubmitTask, setResubmitTask] = useState<Task | null>(null);
-  const [viewTask, setViewTask] = useState<Task | null>(null);
-  const [editTask, setEditTask] = useState<Task | null>(null);
-  const [editTitle, setEditTitle] = useState('');
-  const [editAssignee, setEditAssignee] = useState('');
-  const [editDue, setEditDue] = useState('');
-  const [editReward, setEditReward] = useState(10);
-  const [editPenalty, setEditPenalty] = useState('50');
-  const [editing, setEditing] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const [showCompleted, setShowCompleted] = useState(false);
-
-  const limit = 10;
-  const statusFilter = showCompleted ? 'all' : 'active';
-
-  const { data, isLoading } = useHouseDashboard(houseId, statusFilter, {
-    initialData: statusFilter === 'active' ? prefetchedDashboard : undefined,
+  const { data, isLoading } = useHouseDashboard(houseId, 'active', { initialData: prefetchedDashboard });
+  // Finished chores need the full list; only fetched when that view is open.
+  const { data: allData, isLoading: allLoading } = useHouseDashboard(houseId, 'all', {
+    enabled: view === 'finished',
   });
 
   const chores = data?.chores.items ?? [];
   const voteStatuses = data?.voteStatuses ?? {};
-  const completedCount = data?.chores.completedCount ?? 0;
-
-  const activeTasks = useMemo(
-    () =>
-      chores
-        .map((c) => c.activeInstance)
-        .filter((t): t is Task => t != null),
-    [chores],
+  const needs = useMemo(
+    () => computeNeedsYou(chores, voteStatuses, user?.id, members),
+    [chores, voteStatuses, user?.id, members],
+  );
+  const openChores = chores.filter((c) => c.activeInstance && isOpen(c.activeInstance.status));
+  const finishedChores = (allData?.chores.items ?? []).filter(
+    (c) => !c.activeInstance || !isOpen(c.activeInstance.status),
   );
 
-  const refreshTasks = () => {
-    queryClient.invalidateQueries({ queryKey: ['house', houseId, 'dashboard'] });
-  };
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['house', houseId, 'dashboard'] });
 
-  const handleVoted = async (
-    result: VoteResult,
-    vote: 'approve' | 'reject',
-    reason?: string,
-  ) => {
-    const key = queryKeys.houseDashboard(houseId, statusFilter);
-    queryClient.setQueryData<HouseDashboard>(key, (old) => {
-      if (!old) return old;
-      const votesCast = result.tallies.approved + result.tallies.rejected;
-      const prev = old.voteStatuses[result.taskId];
-      return {
-        ...old,
-        voteStatuses: {
-          ...old.voteStatuses,
-          [result.taskId]: {
-            taskId: result.taskId,
-            status: result.finalStatus,
-            submissionId: result.submissionId ?? prev?.submissionId ?? null,
-            tallies: result.tallies,
-            eligibleVoters: result.eligibleVoters,
-            votesCast,
-            votingComplete: result.votingComplete ?? false,
-            userVote: { vote, reason: reason ?? null },
-            votes: prev?.votes ?? [],
-          },
-        },
-      };
-    });
-    await queryClient.invalidateQueries({ queryKey: key });
-  };
-
-  const isAdminEditable = (status: string) =>
-    isAdmin && ['pending', 'submitted', 'disputed'].includes(status);
-
-  const disputedForUser = useMemo(
-    () => activeTasks.filter((t) => t.assignedTo === user?.id && t.status === 'disputed'),
-    [activeTasks, user?.id],
+  const byStatus = (status: string) => openChores.filter((c) => c.activeInstance?.status === status);
+  const row = (chore: Chore) => (
+    <TurnRow
+      key={chore.id}
+      houseId={houseId}
+      chore={chore}
+      task={chore.activeInstance}
+      members={members}
+      viewerId={user?.id}
+      vote={chore.activeInstance ? voteStatuses[chore.activeInstance.id] : undefined}
+    />
   );
 
-  const filteredChores = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return chores;
-    return chores.filter((c) => {
-      const task = c.activeInstance;
-      const assigneeName =
-        task &&
-        (members.find((m) => m.userId === task.assignedTo)?.user?.name ?? task.assignee?.name ?? '');
-      return (
-        c.title.toLowerCase().includes(q) ||
-        (task?.status.toLowerCase().includes(q) ?? false) ||
-        (assigneeName?.toLowerCase().includes(q) ?? false)
-      );
-    });
-  }, [chores, searchQuery, members]);
-
-  const pages = Math.max(1, Math.ceil(filteredChores.length / limit));
-  const pagedChores = useMemo(() => {
-    const start = (page - 1) * limit;
-    return filteredChores.slice(start, start + limit);
-  }, [filteredChores, page, limit]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [searchQuery, statusFilter]);
-
-  useEffect(() => {
-    if (viewTask) {
-      const chore = chores.find((c) => c.activeInstance?.id === viewTask.id);
-      const updated = chore?.activeInstance;
-      if (updated) setViewTask(updated);
-    }
-  }, [chores, viewTask?.id]);
-
-  const handleAssign = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAssigning(true);
-    try {
-      await tasksApi.assign(houseId, {
-        title: assignTitle,
-        description: assignDesc,
-        deadline: assignDue ? new Date(assignDue + 'T23:59:59.000Z').toISOString() : '',
-        ...(assignUser ? { assignedTo: assignUser } : {}),
-        weight: assignWeight,
-        isRecurring: assignIsRecurring,
-        ...(assignIsRecurring && assignCronSchedule ? { cronSchedule: assignCronSchedule } : {}),
-      });
-      toast.success('Task assigned!');
-      setShowAssign(false);
-      setAssignTitle('');
-      setAssignDesc('');
-      setAssignDue('');
-      setAssignUser('');
-      setAssignWeight(1);
-      setAssignIsRecurring(false);
-      setAssignCronSchedule('');
-      refreshTasks();
-    } catch {
-      toast.error('Failed to assign task');
-    } finally {
-      setAssigning(false);
-    }
-  };
-
-  const openEditModal = (task: Task) => {
-    setEditTask(task);
-    setEditTitle(task.title);
-    setEditAssignee(task.assignedTo);
-    setEditDue(task.deadline ? task.deadline.slice(0, 10) : '');
-    setEditReward(task.rewardPoints ?? 10);
-    setEditPenalty(String(task.penaltyFine ?? 50));
-  };
-
-  const handleEditTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editTask) return;
-    setEditing(true);
-    try {
-      await tasksApi.update(houseId, editTask.id, {
-        ...(editTitle !== editTask.title ? { title: editTitle } : {}),
-        ...(editAssignee !== editTask.assignedTo ? { assignedTo: editAssignee } : {}),
-        ...(editDue
-          ? { deadline: new Date(editDue + 'T23:59:59.000Z').toISOString() }
-          : {}),
-        ...(editReward !== (editTask.rewardPoints ?? 10) ? { rewardPoints: editReward } : {}),
-        ...(Number(editPenalty) !== Number(editTask.penaltyFine ?? 50)
-          ? { penaltyFine: Number(editPenalty) }
-          : {}),
-      });
-      toast.success('Task updated');
-      setEditTask(null);
-      refreshTasks();
-    } catch {
-      toast.error('Failed to update task');
-    } finally {
-      setEditing(false);
-    }
-  };
-
-  const handleDeleteTask = async (taskToDelete?: Task | null) => {
-    const target = taskToDelete ?? editTask;
-    if (!target || !confirm('Delete this task? This cannot be undone.')) return;
-    setDeleting(true);
-    try {
-      await tasksApi.delete(houseId, target.id);
-      toast.success('Task deleted');
-      setEditTask(null);
-      setViewTask(null);
-      refreshTasks();
-    } catch {
-      toast.error('Failed to delete task');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleSubmitProof = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!submitTask) return;
-    setSubmitting(true);
-    try {
-      const fd = new FormData();
-      if (proofFile) fd.append('proof', proofFile);
-      if (proofNote) fd.append('note', proofNote);
-      await tasksApi.submit(houseId, submitTask.id, fd);
-      toast.success('Proof submitted!');
-      setSubmitTask(null);
-      setProofFile(null);
-      setProofNote('');
-      refreshTasks();
-    } catch {
-      toast.error('Failed to submit proof');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const newChoreButton = isAdmin && (
+    <button type="button" onClick={() => setShowNew(true)} className="btn-primary w-full">
+      <Plus className="size-4" />
+      New chore
+    </button>
+  );
 
   return (
-    <div className="flex flex-col gap-6">
-      {disputedForUser.length > 0 && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
-          <Icon name="warning" size={24} className="text-amber-600" />
-          <div>
-            <p className="font-semibold text-amber-900">
-              You have {disputedForUser.length} disputed task
-              {disputedForUser.length !== 1 ? 's' : ''} needing resubmission
-            </p>
-            <p className="mt-1 text-sm text-amber-800">
-              Your proof was rejected by housemates. Re-upload with clarification to start a new
-              voting round.
-            </p>
-            <button
-              type="button"
-              className="mt-2 text-sm font-semibold text-amber-900 underline hover:no-underline"
-              onClick={() => setResubmitTask(disputedForUser[0])}
-            >
-              Resubmit now →
-            </button>
-          </div>
-        </div>
-      )}
+    <div className="flex flex-col gap-6 md:flex-row md:gap-10">
+      <aside className="flex shrink-0 flex-col gap-6 md:w-48">
+        <HookSidebar
+          label="Chores"
+          color="#171717"
+          items={[
+            needs.count ? `Needs you · ${needs.count}` : 'Needs you',
+            `In progress · ${openChores.length}`,
+            'Finished',
+          ]}
+          value={VIEWS.indexOf(view)}
+          onChange={(i) => onViewChange(VIEWS[i])}
+        />
+        {newChoreButton}
+      </aside>
 
-      <div className="flex flex-col justify-between gap-4 rounded-xl border border-neutral-200 bg-white p-4 sm:flex-row sm:items-center">
-        <div className="relative w-full max-w-sm">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-            <Icon name="search" size={20} className="text-neutral-400" />
-          </div>
-          <input
-            className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2.5 pl-12 pr-4 text-sm text-neutral-800 placeholder-neutral-400 transition-all focus:border-black focus:ring-1 focus:ring-black"
-            placeholder="Search tasks..."
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+      <div className="min-w-0 flex-1">
+        {isLoading && !data ? (
+          <Loader label="Loading chores" />
+        ) : view === 'needs' ? (
+          needs.myTurns.length + needs.toReview.length + needs.toFix.length === 0 ? (
+            <EmptyState
+              title="You're all caught up"
+              description="Nothing is waiting on you right now. New turns and reviews will show up here."
+            />
+          ) : (
+            <div className="flex flex-col gap-8">
+              {needs.toFix.length > 0 && (
+                <Section title="Changes requested on yours" count={needs.toFix.length}>
+                  <ul className="flex flex-col gap-2">{needs.toFix.map(({ chore }) => row(chore))}</ul>
+                </Section>
+              )}
+              {needs.toReview.length > 0 && (
+                <Section title="Waiting for your review" count={needs.toReview.length}>
+                  <ul className="flex flex-col gap-2">{needs.toReview.map(({ chore }) => row(chore))}</ul>
+                </Section>
+              )}
+              {needs.myTurns.length > 0 && (
+                <Section title="Your turns">
+                  <MyTurnsList houseId={houseId} turns={needs.myTurns} onChanged={refresh} />
+                </Section>
+              )}
+            </div>
+          )
+        ) : view === 'progress' ? (
+          openChores.length === 0 ? (
+            <EmptyState
+              title="No chores in progress"
+              description={isAdmin ? 'Create a chore and Roomies will pick whose turn it is.' : 'Ask a house admin to set up chores.'}
+              action={isAdmin ? <button className="btn-primary" onClick={() => setShowNew(true)}>New chore</button> : undefined}
+            />
+          ) : (
+            <div className="flex flex-col gap-8">
+              {byStatus('disputed').length > 0 && (
+                <Section title="Changes requested" count={byStatus('disputed').length}>
+                  <ul className="flex flex-col gap-2">{byStatus('disputed').map(row)}</ul>
+                </Section>
+              )}
+              {byStatus('submitted').length > 0 && (
+                <Section title="In review" count={byStatus('submitted').length}>
+                  <ul className="flex flex-col gap-2">{byStatus('submitted').map(row)}</ul>
+                </Section>
+              )}
+              {byStatus('pending').length > 0 && (
+                <Section title="To do" count={byStatus('pending').length}>
+                  <ul className="flex flex-col gap-2">{byStatus('pending').map(row)}</ul>
+                </Section>
+              )}
+            </div>
+          )
+        ) : allLoading && !allData ? (
+          <Loader label="Loading finished chores" />
+        ) : finishedChores.length === 0 ? (
+          <EmptyState
+            title="Nothing finished yet"
+            description="One-off chores land here when they're done. Recurring chores keep every past turn on their own page."
           />
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-sm text-neutral-500">
-            {filteredChores.length} chore{filteredChores.length !== 1 ? 's' : ''}
-            {searchQuery.trim() ? ` matching "${searchQuery.trim()}"` : ''}
-          </span>
-          {!showCompleted && completedCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowCompleted(true)}
-              className="rounded-md bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-200"
-            >
-              Show {completedCount} finished
-            </button>
-          )}
-          {showCompleted && (
-            <button
-              type="button"
-              onClick={() => setShowCompleted(false)}
-              className="rounded-md bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 transition-colors hover:bg-green-100"
-            >
-              Hide finished
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              onClick={() => setShowAssign(true)}
-              className="flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-neutral-800"
-            >
-              <Icon name="add_task" size={18} />
-              Assign Task
-            </button>
-          )}
-        </div>
+        ) : (
+          <Section title="Finished chores" count={finishedChores.length}>
+            <ul className="flex flex-col gap-2">
+              {finishedChores.map((chore) => (
+                <TurnRow
+                  key={chore.id}
+                  houseId={houseId}
+                  chore={chore}
+                  task={chore.activeInstance}
+                  members={members}
+                  viewerId={user?.id}
+                />
+              ))}
+            </ul>
+          </Section>
+        )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-16 animate-pulse rounded-xl bg-neutral-100" />
-          ))}
-        </div>
-      ) : filteredChores.length === 0 ? (
-        <div className="py-20 text-center text-neutral-400">
-          <Icon name="task" size={48} className="mb-2 text-neutral-300" />
-          <p className="text-lg font-semibold text-neutral-700">No tasks yet</p>
-          <p className="mt-1 text-sm">Assign a task to get started</p>
-        </div>
-      ) : (
-        <div className="w-full overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full whitespace-nowrap text-left text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                <tr>
-                  <th className="px-6 py-4">Task Title</th>
-                  <th className="px-6 py-4">Assigned To</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Deadline</th>
-                  <th className="px-6 py-4 text-right">Reward</th>
-                  <th className="px-6 py-4 text-center w-28">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {pagedChores.map((chore, idx) => {
-                  const task = chore.activeInstance;
-                  if (!task) return null;
-                  const isAssignee = task.assignedTo === user?.id;
-                  const canSubmit = isAssignee && task.status === 'pending';
-                  const canResubmit = isAssignee && task.status === 'disputed';
-                  const vs = voteStatuses[task.id];
-                  const canVote =
-                    task.status === 'submitted' &&
-                    !isAssignee &&
-                    !vs?.userVote &&
-                    !vs?.votingComplete;
-                  const hasVoted = !!vs?.userVote;
-                  const taskStyle = TASK_ICON_STYLES[idx % TASK_ICON_STYLES.length];
-                  const isOverdue = task.status === 'expired' || task.status === 'rejected';
-                  const isDone = task.status === 'completed';
-                  const assigneeName = isAssignee
-                    ? 'You'
-                    : members.find((m) => m.userId === task.assignedTo)?.user?.name ?? '—';
-
-                  return (
-                    <tr
-                      key={chore.id}
-                      className={`group cursor-pointer transition-all duration-200 hover:bg-neutral-50 ${
-                        isOverdue ? 'bg-red-50 hover:bg-red-100' : ''
-                      } ${isDone ? 'opacity-60' : ''}`}
-                      onClick={(e) => {
-                        if (!(e.target as HTMLElement).closest('button')) {
-                          setViewTask(task);
-                        }
-                      }}
-                    >
-                      <td className="px-6 py-4 font-medium text-neutral-800">
-                        <div className="flex items-center gap-4">
-                          <div
-                            className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${taskStyle.bg} ${taskStyle.text} transition-transform group-hover:scale-105`}
-                          >
-                            <Icon name={taskStyle.icon} size={20} />
-                          </div>
-                          <div>
-                            <span className="text-base">{chore.title}</span>
-                            {chore.isRecurring && chore.totalCycles > 1 && (
-                              <p className="mt-0.5 text-xs text-neutral-500">
-                                Cycle {task.cycleNumber ?? chore.totalCycles}
-                                {chore.completedCycleCount > 0 &&
-                                  ` · ${chore.completedCycleCount} completed`}
-                              </p>
-                            )}
-                            {task.status === 'submitted' && vs && (
-                              <p className="mt-0.5 text-xs text-neutral-500">
-                                {vs.votesCast}/{vs.eligibleVoters} votes · need {vs.tallies.required}
-                              </p>
-                            )}
-                            {isDone && (
-                              <p className="mt-0.5 text-xs text-green-600">
-                                Completed by {assigneeName}
-                                {task.deadline ? ` · ${format(new Date(task.deadline), 'MMM d')}` : ''}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex size-8 items-center justify-center rounded-full bg-neutral-200 text-xs font-bold text-neutral-600">
-                            {members
-                              .find((m) => m.userId === task.assignedTo)
-                              ?.user?.name?.[0]
-                              ?.toUpperCase() ?? '?'}
-                          </div>
-                          <span
-                            className={
-                              isAssignee
-                                ? 'font-semibold text-black'
-                                : 'font-medium text-neutral-600'
-                            }
-                          >
-                            {assigneeName}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${statusBadgeClass(task.status)}`}
-                        >
-                          {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
-                        </span>
-                      </td>
-                      <td
-                        className={`px-6 py-4 ${isOverdue ? 'font-medium text-red-600' : 'text-neutral-500'}`}
-                      >
-                        {task.deadline ? format(new Date(task.deadline), 'MMM d, h:mm a') : '—'}
-                      </td>
-                      <td className="px-6 py-4 text-right font-semibold text-green-600">
-                        +{chore.rewardPoints ?? task.rewardPoints ?? 10} pts
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {canSubmit && (
-                          <button
-                            onClick={() => setSubmitTask(task)}
-                            className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 transition-all hover:bg-black hover:text-white"
-                            title="Submit Proof"
-                          >
-                            <Icon name="upload" size={18} />
-                          </button>
-                        )}
-                        {canResubmit && (
-                          <button
-                            onClick={() => setResubmitTask(task)}
-                            className="mx-auto flex size-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition-all hover:bg-amber-600 hover:text-white"
-                            title="Resubmit Proof"
-                          >
-                            <Icon name="replay" size={18} />
-                          </button>
-                        )}
-                        {canVote && (
-                          <button
-                            onClick={() => setVoteTask(task)}
-                            className="mx-auto flex size-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition-all hover:bg-blue-600 hover:text-white"
-                            title="Review & Vote"
-                          >
-                            <Icon name="fact_check" size={18} />
-                          </button>
-                        )}
-                        {hasVoted && task.status === 'submitted' && !isAssignee && (
-                          <span className="mx-auto inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">
-                            Voted
-                          </span>
-                        )}
-                        {isAdminEditable(task.status) && (
-                          <button
-                            onClick={() => openEditModal(task)}
-                            className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 transition-all hover:bg-neutral-800 hover:text-white"
-                            title="Edit task"
-                          >
-                            <Icon name="edit" size={18} />
-                          </button>
-                        )}
-                        {!canSubmit &&
-                          !canResubmit &&
-                          !canVote &&
-                          !hasVoted &&
-                          !isAdminEditable(task.status) && (
-                          <div className="mx-auto flex size-9 items-center justify-center rounded-lg bg-neutral-50 text-neutral-400 opacity-50">
-                            <Icon name="check" size={18} />
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {isAdmin && (
+        <NewChoreModal
+          open={showNew}
+          onClose={() => setShowNew(false)}
+          houseId={houseId}
+          members={members}
+          onCreated={refresh}
+        />
       )}
-
-      {pages > 1 && (
-        <div className="mt-4 flex items-center justify-end gap-3">
-          <button
-            className="flex size-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-black disabled:opacity-40"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-          >
-            <Icon name="chevron_left" size={18} />
-          </button>
-          <span className="text-sm font-medium text-neutral-600">
-            Page {page} of {pages}
-          </span>
-          <button
-            className="flex size-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-black disabled:opacity-40"
-            onClick={() => setPage((p) => Math.min(pages, p + 1))}
-            disabled={page === pages}
-          >
-            <Icon name="chevron_right" size={18} />
-          </button>
-        </div>
-      )}
-
-      <Modal open={!!editTask} onClose={() => setEditTask(null)} title="Edit Task">
-        {editTask && (
-          <form onSubmit={handleEditTask} className="flex flex-col gap-4">
-            {editTask.status !== 'pending' && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                Reassigning this task resets it to pending and clears the current voting round.
-              </div>
-            )}
-            <div>
-              <label className="mb-1 block text-sm font-semibold">Title</label>
-              <input
-                className="w-full rounded-lg border border-neutral-200 px-3 py-2"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold">Assign To</label>
-              <select
-                className="w-full rounded-lg border border-neutral-200 px-3 py-2"
-                value={editAssignee}
-                onChange={(e) => setEditAssignee(e.target.value)}
-              >
-                {members.map((m) => (
-                  <option key={m.userId} value={m.userId}>
-                    {m.user?.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <DatePicker
-                label="Due Date"
-                value={editDue}
-                onChange={setEditDue}
-                minDate={new Date(2020, 0, 1)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-semibold">Reward Points</label>
-                <input
-                  type="number"
-                  min={1}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2"
-                  value={editReward}
-                  onChange={(e) => setEditReward(Number(e.target.value))}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold">Penalty Fine (₹)</label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2"
-                  value={editPenalty}
-                  onChange={(e) => setEditPenalty(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex gap-3">
-              {isAdminEditable(editTask.status) && (
-                <button
-                  type="button"
-                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                  disabled={deleting}
-                  onClick={() => handleDeleteTask()}
-                >
-                  {deleting ? 'Deleting…' : 'Delete'}
-                </button>
-              )}
-              <button
-                type="button"
-                className="flex-1 rounded-lg bg-neutral-100 py-2 font-semibold"
-                onClick={() => setEditTask(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="flex-1 rounded-lg bg-black py-2 font-semibold text-white"
-                disabled={editing}
-              >
-                {editing ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </form>
-        )}
-      </Modal>
-
-      <AssignTaskModal
-        open={showAssign}
-        onClose={() => setShowAssign(false)}
-        members={members}
-        assigning={assigning}
-        state={{
-          title: assignTitle,
-          description: assignDesc,
-          assignUser: assignUser,
-          dueDate: assignDue,
-          weight: assignWeight,
-          isRecurring: assignIsRecurring,
-          cronSchedule: assignCronSchedule,
-        }}
-        onChange={(key, value) => {
-          if (key === 'title') setAssignTitle(value as string);
-          if (key === 'description') setAssignDesc(value as string);
-          if (key === 'assignUser') setAssignUser(value as string);
-          if (key === 'dueDate') setAssignDue(value as string);
-          if (key === 'weight') setAssignWeight(value as number);
-          if (key === 'isRecurring') setAssignIsRecurring(value as boolean);
-          if (key === 'cronSchedule') setAssignCronSchedule(value as string);
-        }}
-        onSubmit={handleAssign}
-      />
-
-      <Modal open={!!submitTask} onClose={() => setSubmitTask(null)} title="Submit Proof">
-        <form onSubmit={handleSubmitProof} className="flex flex-col gap-4">
-          <p className="text-sm text-neutral-500">
-            Task: <span className="font-semibold text-black">{submitTask?.title}</span>
-          </p>
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-neutral-800">
-              Proof Image (optional)
-            </label>
-            <input
-              className="block w-full text-sm text-neutral-600 file:mr-4 file:rounded-full file:border-0 file:bg-neutral-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-neutral-700 hover:file:bg-neutral-200"
-              type="file"
-              accept="image/*"
-              onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-neutral-800">Note</label>
-            <textarea
-              className="w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-neutral-900 focus:border-black focus:ring-1 focus:ring-black"
-              rows={3}
-              placeholder="Describe what you did…"
-              value={proofNote}
-              onChange={(e) => setProofNote(e.target.value)}
-            />
-          </div>
-          <div className="mt-4 flex gap-3">
-            <button
-              type="button"
-              className="flex-1 rounded-lg bg-neutral-100 py-2 font-semibold text-neutral-700 hover:bg-neutral-200"
-              onClick={() => setSubmitTask(null)}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="flex-1 rounded-lg bg-black py-2 font-semibold text-white hover:bg-neutral-800 disabled:opacity-50"
-              disabled={submitting}
-            >
-              {submitting ? 'Submitting…' : 'Submit'}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      <VoteModal
-        task={voteTask}
-        houseId={houseId}
-        onClose={() => setVoteTask(null)}
-        onVoted={handleVoted}
-      />
-
-      <ResubmitModal
-        task={resubmitTask}
-        houseId={houseId}
-        onClose={() => setResubmitTask(null)}
-        onSubmitted={refreshTasks}
-      />
-
-      <TaskDetailsModal
-        task={viewTask}
-        members={members}
-        currentUserId={user?.id}
-        isAdmin={isAdmin}
-        onClose={() => setViewTask(null)}
-        onSubmitProof={() => {
-          if (viewTask) {
-            setSubmitTask(viewTask);
-            setViewTask(null);
-          }
-        }}
-        onResubmit={() => {
-          if (viewTask) {
-            setResubmitTask(viewTask);
-            setViewTask(null);
-          }
-        }}
-        onVote={() => {
-          if (viewTask) {
-            setVoteTask(viewTask);
-            setViewTask(null);
-          }
-        }}
-        onEdit={() => {
-          if (viewTask) {
-            openEditModal(viewTask);
-            setViewTask(null);
-          }
-        }}
-        onDelete={() => {
-          if (viewTask) handleDeleteTask(viewTask);
-        }}
-      />
     </div>
   );
 }

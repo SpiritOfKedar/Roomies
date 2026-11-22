@@ -1,5 +1,7 @@
 'use client';
 
+import { AnimatedCounter } from '@/components/ui/rare/animated-counter';
+
 import { Icon } from '@/components/Icon';
 import type { LeaderboardEntry } from './types';
 
@@ -87,7 +89,7 @@ export default function LeaderboardPodium({ entries, currentUserId }: Props) {
               {isMe && <span className="ml-1 text-xs font-semibold text-neutral-500">(you)</span>}
             </p>
             <p className="mt-0.5 text-xs text-neutral-500">{entry.completedTasks} tasks done</p>
-            <p className="mt-3 text-3xl font-extrabold text-neutral-900">{points}</p>
+            <AnimatedCounter value={points} className="mt-3 text-3xl font-extrabold text-neutral-900" />
             <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">points</p>
             {entry.penaltyPoints > 0 && (
               <p className="mt-1 text-xs font-semibold text-red-600">−{entry.penaltyPoints} penalties</p>

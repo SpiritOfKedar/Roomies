@@ -8,6 +8,10 @@ module.exports = {
       colors: {
         // Dashboard / Auth light theme (neutral monochrome)
         primary:           '#171717',
+        // Tokens used by Rare UI components (shadcn naming)
+        foreground:        '#171717',
+        ring:              '#171717',
+        'card-foreground': '#171717',
         'primary-h':       '#262626',
         bg:                '#FAFAFA',
         surface:           '#ffffff',

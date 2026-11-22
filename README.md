@@ -550,3 +550,12 @@ The backfill:
 ## License
 
 ISC (see `backend/package.json`).
+
+---
+
+## Credits
+
+UI components from third-party libraries, copied into the frontend with their notices intact (full license texts in [`frontend/THIRD_PARTY_NOTICES.md`](frontend/THIRD_PARTY_NOTICES.md)):
+
+- **[Rare UI](https://rareui.com)** by Swami Malode — hook sidebar, task list, delete button, notification bell, animated counter, duration picker and folder (`frontend/src/components/ui/rare/`).
+- **[oxyn](https://oxyn.space)** by lokidotdev — dot-circle loader (`frontend/src/components/ui/oxyn/`).

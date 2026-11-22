@@ -7,8 +7,11 @@ export const castVoteSchema = z
     vote: z.enum(['approve', 'reject']),
     reason: z.string().max(500).optional(),
   })
-  .refine((data) => data.vote !== 'reject' || data.reason === undefined || data.reason.length > 0, {
-    message: 'Reason cannot be empty when provided',
+  // "Request changes" must tell the assignee what to fix — a bare rejection gives
+  // them nothing to act on before their next attempt.
+  .refine((data) => data.vote !== 'reject' || (data.reason?.trim().length ?? 0) >= 3, {
+    message: 'Say what needs fixing (at least 3 characters)',
+    path: ['reason'],
   });
 
 export type CastVoteInput = z.infer<typeof castVoteSchema>;

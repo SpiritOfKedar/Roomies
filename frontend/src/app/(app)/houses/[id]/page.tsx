@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { housesApi } from '@/lib/endpoints';
 import { useHouseDashboard } from '@/hooks/useHouseDashboard';
 import { useAuth } from '@/hooks/useAuth';
-import TasksTab from './components/TasksTab';
+import TasksTab, { type TaskView } from './components/TasksTab';
+import { NotificationBell } from '@/components/ui/rare/notification-bell';
+import Loader from '@/components/ui/Loader';
+import { computeNeedsYou } from '@/lib/turn-status';
 import ExpensesTab from './components/expenses/ExpensesTab';
 import LeaderboardTab from './components/leaderboard/LeaderboardTab';
 import SwapsTab from './components/SwapsTab';
@@ -45,12 +48,20 @@ export default function HousePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('tasks');
+  const [taskView, setTaskView] = useState<TaskView>('needs');
 
   const { data: dashboard, isLoading, isError } = useHouseDashboard(id);
 
   const house = dashboard?.house ?? null;
   const members = house?.members ?? [];
   const isAdmin = members.find((m) => m.userId === user?.id)?.role === 'admin';
+
+  // Turns to do, reviews to cast and fixes to make — drives the bell badge.
+  const needsCount = useMemo(
+    () =>
+      computeNeedsYou(dashboard?.chores.items ?? [], dashboard?.voteStatuses ?? {}, user?.id, members).count,
+    [dashboard, user?.id, members],
+  );
 
   const [showAddMember, setShowAddMember] = useState(false);
   const [addMemberEmail, setAddMemberEmail] = useState('');
@@ -160,6 +171,15 @@ export default function HousePage() {
               </div>
             )}
             <div className="mt-4 flex flex-wrap items-center gap-3">
+              <NotificationBell
+                count={needsCount}
+                size={44}
+                title={needsCount ? `${needsCount} waiting on you` : 'Nothing waiting on you'}
+                onClick={() => {
+                  setTab('tasks');
+                  setTaskView('needs');
+                }}
+              />
               <button
                 type="button"
                 onClick={() => setShowManageHouse(true)}
@@ -229,6 +249,8 @@ export default function HousePage() {
             members={members}
             isAdmin={!!isAdmin}
             prefetchedDashboard={dashboard}
+            view={taskView}
+            onViewChange={setTaskView}
           />
         )}
         {house && tab === 'chat' && (
@@ -240,13 +262,7 @@ export default function HousePage() {
         {house && tab === 'penalties' && (
           <PenaltiesSection houseId={id as string} members={members} isAdmin={!!isAdmin} />
         )}
-        {isLoading && !house && (
-          <div className="space-y-3">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-16 animate-pulse rounded-xl bg-neutral-100" />
-            ))}
-          </div>
-        )}
+        {isLoading && !house && <Loader label="Loading house" />}
       </div>
 
       {isAdmin && (

@@ -1,5 +1,7 @@
 'use client';
 
+import { AnimatedCounter } from '@/components/ui/rare/animated-counter';
+
 import type { LeaderboardEntry } from './types';
 
 interface Props {
@@ -53,7 +55,7 @@ export default function LeaderboardRankList({
               {entry.completedTasks}
             </div>
             <div className="col-span-2 text-center text-base font-bold text-neutral-900">
-              {points}
+              <AnimatedCounter value={points} />
             </div>
             <div className="col-span-2 text-center text-sm">
               {entry.penaltyPoints > 0 ? (
