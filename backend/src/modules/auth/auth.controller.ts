@@ -13,7 +13,16 @@
 import { Request, Response } from 'express';
 import { sendSuccess } from '../../shared/utils/api-response';
 import * as authService from './auth.service';
-import type { RegisterInput, LoginInput, RefreshInput, GoogleIdTokenInput } from './auth.schema';
+import crypto from 'crypto';
+import type {
+  RegisterInput,
+  LoginInput,
+  RefreshInput,
+  GoogleIdTokenInput,
+  GoogleExchangeInput,
+} from './auth.schema';
+import { putValue, takeValue } from '../../shared/cache/ephemeral-store';
+import { UnauthorizedError } from '../../shared/utils/app-error';
 import type {
   RecoveryEmailInput,
   VerifyQuestionsInput,
@@ -23,6 +32,10 @@ import type {
 import * as recoveryService from './recovery.service';
 import { getGoogleAuthUrl } from '../../shared/utils/google-oauth';
 import { env } from '../../shared/utils/env';
+
+/** Lifetime of the one-time code that carries a Google sign-in to the frontend. */
+const GOOGLE_CODE_TTL_SEC = 60;
+const googleCodeKey = (code: string) => `oauth:google:${code}`;
 
 /**
  * POST /auth/register
@@ -126,15 +139,30 @@ export async function googleCallback(req: Request, res: Response): Promise<void>
       ipAddress: req.ip,
     });
 
-    const params = new URLSearchParams({
-      accessToken: result.tokens.accessToken,
-      refreshToken: result.tokens.refreshToken,
-    });
-    res.redirect(`${env.CORS_ORIGIN}/auth/google/callback?${params.toString()}`);
+    // Never put session tokens in a URL (browser history, logs, Referer).
+    // Hand the frontend a short-lived one-time code it exchanges via POST.
+    const oneTimeCode = crypto.randomBytes(32).toString('hex');
+    await putValue(googleCodeKey(oneTimeCode), JSON.stringify(result.tokens), GOOGLE_CODE_TTL_SEC);
+    res.redirect(`${env.CORS_ORIGIN}/auth/google/callback?code=${oneTimeCode}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'google_auth_failed';
     res.redirect(`${env.CORS_ORIGIN}/auth/google/callback?error=${encodeURIComponent(message)}`);
   }
+}
+
+/**
+ * POST /auth/google/exchange
+ * Swaps the one-time code from the Google redirect for the session tokens.
+ */
+export async function googleExchange(req: Request, res: Response): Promise<void> {
+  const { code } = req.body as GoogleExchangeInput;
+
+  const stored = await takeValue(googleCodeKey(code));
+  if (!stored) {
+    throw UnauthorizedError('This sign-in link has expired. Please sign in with Google again.');
+  }
+
+  sendSuccess(res, JSON.parse(stored) as authService.AuthTokens);
 }
 
 export async function recoveryOptions(req: Request, res: Response): Promise<void> {
@@ -151,7 +179,7 @@ export async function recoveryEmail(req: Request, res: Response): Promise<void> 
 
 export async function recoveryVerifyQuestions(req: Request, res: Response): Promise<void> {
   const input = req.body as VerifyQuestionsInput;
-  const result = await recoveryService.verifySecurityQuestions(input);
+  const result = await recoveryService.verifySecurityQuestions(input, { ipAddress: req.ip });
   sendSuccess(res, result);
 }
 

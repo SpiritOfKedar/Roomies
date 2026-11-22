@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import multer from 'multer';
+import { imageUpload } from '../../shared/middleware/image-upload';
 import { requireAuth } from '../../shared/middleware/require-auth';
 import { validate } from '../../shared/middleware/validate';
 import { asyncHandler } from '../../shared/middleware/async-handler';
@@ -10,17 +10,7 @@ import {
   createMessageSchema,
 } from './messages.schema';
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
-  },
-});
+const upload = imageUpload;
 
 export const messageRoutes = Router({ mergeParams: true });
 

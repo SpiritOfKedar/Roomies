@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { authApi } from '@/lib/endpoints';
@@ -8,8 +8,13 @@ import { authApi } from '@/lib/endpoints';
 export default function GoogleCallbackPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  // The sign-in code is single-use; StrictMode's double effect must not spend it twice.
+  const started = useRef(false);
 
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+
     const params = new URLSearchParams(window.location.search);
     const oauthError = params.get('error');
 
@@ -18,23 +23,27 @@ export default function GoogleCallbackPage() {
       return;
     }
 
-    const accessToken = params.get('accessToken');
-    const refreshToken = params.get('refreshToken');
+    const code = params.get('code');
 
-    if (!accessToken || !refreshToken) {
-      setError('Google sign-in did not return session tokens');
+    if (!code) {
+      setError('Google sign-in did not return a sign-in code');
       return;
     }
 
-    localStorage.setItem('accessToken', accessToken);
-    localStorage.setItem('refreshToken', refreshToken);
+    // Drop the one-time code from the address bar and history right away.
+    window.history.replaceState(null, '', window.location.pathname);
 
     authApi
-      .me()
+      .googleExchange(code)
+      .then(({ data }) => {
+        localStorage.setItem('accessToken', data.data.accessToken);
+        localStorage.setItem('refreshToken', data.data.refreshToken);
+        return authApi.me();
+      })
       .then(() => router.replace('/dashboard'))
       .catch(() => {
         localStorage.clear();
-        setError('Signed in with Google but failed to load your profile');
+        setError('Google sign-in expired or failed. Please try again.');
       });
   }, [router]);
 

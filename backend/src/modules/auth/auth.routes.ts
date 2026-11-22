@@ -18,7 +18,13 @@ import { Router } from 'express';
 import { validate } from '../../shared/middleware/validate';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import * as authController from './auth.controller';
-import { registerSchema, loginSchema, refreshSchema, googleIdTokenSchema } from './auth.schema';
+import {
+  registerSchema,
+  loginSchema,
+  refreshSchema,
+  googleIdTokenSchema,
+  googleExchangeSchema,
+} from './auth.schema';
 import {
   recoveryEmailSchema,
   verifyQuestionsSchema,
@@ -85,6 +91,17 @@ router.get('/google', asyncHandler(authController.googleRedirect));
  * Public — Google OAuth redirect target; forwards tokens to the frontend.
  */
 router.get('/google/callback', asyncHandler(authController.googleCallback));
+
+/**
+ * POST /api/auth/google/exchange
+ * Public — exchanges the one-time code from the callback for session tokens.
+ */
+router.post(
+  '/google/exchange',
+  authLimiter,
+  validate({ body: googleExchangeSchema }),
+  asyncHandler(authController.googleExchange),
+);
 
 router.post(
   '/recovery/options',

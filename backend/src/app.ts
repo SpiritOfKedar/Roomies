@@ -29,6 +29,7 @@ import {
   stopDatabaseHeartbeat,
 } from './shared/db/prisma';
 import { requestTiming } from './shared/middleware/request-timing';
+import { requireSignedUpload } from './shared/utils/upload-urls';
 import { disconnectCacheRedis, warmupRedis } from './shared/cache/redis-cache';
 
 // ---- Module Route Imports ----
@@ -64,8 +65,17 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(requestTiming);
 
-// ---- Static uploads ----
-app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR)));
+// ---- Static uploads (signed, expiring URLs only — see upload-urls.ts) ----
+app.use(
+  '/uploads',
+  requireSignedUpload,
+  express.static(path.resolve(env.UPLOAD_DIR), {
+    cacheControl: false, // requireSignedUpload sets a private Cache-Control
+    index: false,
+    dotfiles: 'deny',
+    fallthrough: false,
+  }),
+);
 
 // ---- Health Check ----
 app.get('/health', (_req, res) => {

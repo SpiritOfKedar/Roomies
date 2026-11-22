@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma';
 import * as penaltyService from '../../modules/penalty/penalty.service';
 import { logger } from '../utils/logger';
 import { redisConnection } from './queue';
+import { reconcileSubmittedTasks } from '../../modules/voting/voting.service';
 
 let taskSweeperWorker: Worker | null = null;
 
@@ -13,6 +14,15 @@ export function startTaskSweeperWorker() {
     'task-sweeper-queue',
     async (job: Job) => {
       logger.info(`Task Sweeper [${job.id}]: Checking for expired tasks...`);
+
+      // Finalize submissions whose vote threshold was met by a membership change.
+      const reconciled = await reconcileSubmittedTasks().catch((err) => {
+        logger.error({ err }, `Task Sweeper [${job.id}]: vote reconciliation failed`);
+        return 0;
+      });
+      if (reconciled > 0) {
+        logger.info(`Task Sweeper [${job.id}]: Reconciled ${reconciled} stuck submission(s).`);
+      }
 
       const expiredTasks = await prisma.task.findMany({
         where: {

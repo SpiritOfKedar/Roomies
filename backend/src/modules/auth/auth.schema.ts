@@ -57,6 +57,13 @@ export const googleIdTokenSchema = z.object({
 
 export type GoogleIdTokenInput = z.infer<typeof googleIdTokenSchema>;
 
+/** One-time code handed to the frontend by the Google redirect callback. */
+export const googleExchangeSchema = z.object({
+  code: z.string().regex(/^[0-9a-f]{64}$/, 'Invalid sign-in code'),
+});
+
+export type GoogleExchangeInput = z.infer<typeof googleExchangeSchema>;
+
 export const googleCallbackSchema = z.object({
   code: z.string().min(1, 'Authorization code is required'),
 });

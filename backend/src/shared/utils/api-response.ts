@@ -10,6 +10,7 @@
  */
 
 import { Response } from 'express';
+import { signUploadUrls } from './upload-urls';
 
 /**
  * Standard API response shape.
@@ -26,7 +27,8 @@ export interface ApiResponse<T = unknown> {
 export function sendSuccess<T>(res: Response, data: T, statusCode = 200): void {
   const body: ApiResponse<T> = {
     success: true,
-    data,
+    // Local upload URLs leave the API signed + expiring (see upload-urls.ts)
+    data: signUploadUrls(data),
     error: null,
   };
   res.status(statusCode).json(body);
@@ -66,7 +68,7 @@ export function sendPaginated<T>(
   const body: ApiResponse<PaginatedData<T>> = {
     success: true,
     data: {
-      items,
+      items: signUploadUrls(items),
       total,
       limit,
       offset,

@@ -3,6 +3,7 @@ import * as penaltyRepo from './penalty.repository';
 import { logger } from '../../shared/utils/logger';
 import { AppError, NotFoundError } from '../../shared/utils/app-error';
 import * as houseService from '../house/house.service';
+import { invalidateHouseCache } from '../../shared/cache/redis-cache';
 
 type TxClient = Prisma.TransactionClient;
 
@@ -87,6 +88,9 @@ export async function settlePenalty(requestingUserId: string, houseId: string, p
   }
 
   logger.info({ penaltyId, houseId, requestingUserId }, 'Penalty settled by admin');
+
+  // Settling removes penalty points from the leaderboard score
+  await invalidateHouseCache(houseId);
 
   return updated;
 }

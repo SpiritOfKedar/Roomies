@@ -53,6 +53,19 @@ export interface AuthResponse {
 
 // ---- Service Functions ----
 
+/** One message for every credential failure, so login can't be used to probe which emails exist. */
+const INVALID_CREDENTIALS = 'Incorrect email or password';
+
+/**
+ * bcrypt hash of a random throwaway value. Compared against when the email is
+ * unknown so that path costs the same as a wrong password (no timing oracle).
+ */
+let dummyHashPromise: Promise<string> | null = null;
+function getDummyHash(): Promise<string> {
+  if (!dummyHashPromise) dummyHashPromise = hashPassword(`dummy-${Date.now()}-${Math.random()}`);
+  return dummyHashPromise;
+}
+
 async function issueAuthTokens(
   userId: string,
   meta: { userAgent?: string; ipAddress?: string } = {},
@@ -169,7 +182,8 @@ export async function login(
   // 1. Find user (need password hash, so use findUserByEmail not safe version)
   const user = await usersRepo.findUserByEmail(input.email);
   if (!user) {
-    throw UnauthorizedError('Incorrect email and password');
+    await comparePassword(input.password, await getDummyHash());
+    throw UnauthorizedError(INVALID_CREDENTIALS);
   }
 
   if (!user.passwordHash) {
@@ -179,7 +193,7 @@ export async function login(
   // 2. Verify password
   const passwordValid = await comparePassword(input.password, user.passwordHash);
   if (!passwordValid) {
-    throw UnauthorizedError('Incorrect password');
+    throw UnauthorizedError(INVALID_CREDENTIALS);
   }
 
   // 3. Check account status

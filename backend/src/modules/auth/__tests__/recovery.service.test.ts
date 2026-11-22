@@ -12,6 +12,11 @@ jest.mock('../../../shared/db/prisma', () => ({
   },
 }));
 
+jest.mock('../../../shared/cache/ephemeral-store', () => ({
+  incrementCounter: jest.fn().mockResolvedValue(1),
+  getCounter: jest.fn().mockResolvedValue(0),
+  deleteKeys: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('../../users/users.repository');
 jest.mock('../../users/security-questions.repository');
 jest.mock('../../../shared/mail/mailer', () => ({

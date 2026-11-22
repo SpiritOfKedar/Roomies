@@ -14,7 +14,7 @@
  */
 
 import { Router } from 'express';
-import multer from 'multer';
+import { imageUpload } from '../../shared/middleware/image-upload';
 import { requireAuth } from '../../shared/middleware/require-auth';
 import { validate } from '../../shared/middleware/validate';
 import { asyncHandler } from '../../shared/middleware/async-handler';
@@ -36,17 +36,7 @@ import {
  * Multer — in-memory storage so the Buffer is directly available for upload.
  * Limits: 5 MB per file, single image field named 'proof'.
  */
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
-  },
-});
+const upload = imageUpload;
 
 // ---- House-scoped task routes (/api/houses/:id/tasks) ----
 export const houseTaskRoutes = Router({ mergeParams: true });

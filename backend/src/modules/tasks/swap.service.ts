@@ -25,6 +25,7 @@ import * as swapRepo from './swap.repository';
 import * as houseService from '../house/house.service';
 import { logger } from '../../shared/utils/logger';
 import { logTaskActivity } from './task-activity.service';
+import { invalidateHouseCache } from '../../shared/cache/redis-cache';
 
 // ---- Service Functions ----
 
@@ -122,7 +123,12 @@ export async function proposeSwap(
     throw new AppError('The requested task is not assigned to the specified receiver', 400);
   }
 
-  // 7. Create the swap proposal
+  // 7. The receiver must still be an active member
+  await houseService.verifyMembership(houseId, receiverId).catch(() => {
+    throw new AppError('The receiver is not an active member of this house', 400);
+  });
+
+  // 8. Create the swap proposal
   const swap = await swapRepo.createSwap({
     houseId,
     requesterId,
@@ -186,6 +192,12 @@ export async function resolveSwap(
     throw ForbiddenError('Only the swap receiver can resolve this request');
   }
 
+  // 3b. Both parties must still be active members of the house
+  await houseService.verifyMembership(houseId, receiverId);
+  await houseService.verifyMembership(houseId, swap.requesterId).catch(() => {
+    throw ConflictError('The requester is no longer an active member of this house');
+  });
+
   // 4. Only pending swaps can be resolved
   if (swap.status !== 'pending') {
     throw ConflictError(`Swap has already been resolved (current status: '${swap.status}')`);
@@ -196,6 +208,8 @@ export async function resolveSwap(
     const updated = await swapRepo.updateSwapStatus(swapId, 'rejected');
 
     logger.info({ swapId, receiverId }, 'Swap rejected');
+
+    await invalidateHouseCache(houseId);
 
     return updated;
   }
@@ -235,6 +249,8 @@ export async function resolveSwap(
       },
       'Swap accepted — tasks reassigned',
     );
+
+    await invalidateHouseCache(houseId);
 
     return updated;
   } catch (err) {

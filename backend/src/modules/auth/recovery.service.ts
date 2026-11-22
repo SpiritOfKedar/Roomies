@@ -11,6 +11,7 @@ import { sendPasswordResetEmail } from '../../shared/mail/mailer';
 import { SECURITY_QUESTIONS } from '../../shared/constants/security-questions';
 import * as usersRepo from '../users/users.repository';
 import * as securityQuestionsRepo from '../users/security-questions.repository';
+import { incrementCounter, getCounter, deleteKeys } from '../../shared/cache/ephemeral-store';
 import type {
   RecoveryEmailInput,
   VerifyQuestionsInput,
@@ -27,37 +28,62 @@ export interface RecoveryOptions {
 
 const EMAIL_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const RECOVERY_SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes
-const MAX_QUESTION_FAILURES = 5;
-const QUESTION_FAILURE_WINDOW_MS = 60 * 60 * 1000;
+/**
+ * Security-question lockouts live in Redis so they are shared across instances
+ * and survive restarts. Two tiers:
+ *   - per (email, IP): a single attacker is stopped after a few guesses, but
+ *     cannot lock the real owner out from a different network.
+ *   - per email: a high ceiling that stops distributed guessing. It only locks
+ *     the security-question method; email reset keeps working.
+ */
+const QUESTION_FAILURE_WINDOW_SEC = 60 * 60;
+const MAX_FAILURES_PER_EMAIL_IP = 5;
+const MAX_FAILURES_PER_EMAIL = 20;
 
-const questionFailureTracker = new Map<string, { count: number; resetAt: number }>();
+const failKeyEmailIp = (email: string, ip: string) => `recovery:qfail:${email}:${ip}`;
+const failKeyEmail = (email: string) => `recovery:qfail:${email}`;
 
-function generateRawToken(): string {
+function generateSecret(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-function trackQuestionFailure(email: string): void {
-  const now = Date.now();
-  const entry = questionFailureTracker.get(email);
-  if (!entry || entry.resetAt < now) {
-    questionFailureTracker.set(email, { count: 1, resetAt: now + QUESTION_FAILURE_WINDOW_MS });
-    return;
-  }
-  entry.count += 1;
+/**
+ * Tokens are "<rowId>.<secret>". The row id is a lookup selector, so verifying
+ * is one indexed read plus one bcrypt compare instead of comparing against every
+ * outstanding token in the table. Only the secret is hashed and stored.
+ */
+function buildToken(rowId: string, secret: string): string {
+  return `${rowId}.${secret}`;
 }
 
-function isQuestionLocked(email: string): boolean {
-  const entry = questionFailureTracker.get(email);
-  if (!entry) return false;
-  if (entry.resetAt < Date.now()) {
-    questionFailureTracker.delete(email);
-    return false;
-  }
-  return entry.count >= MAX_QUESTION_FAILURES;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseToken(rawToken: string): { rowId: string; secret: string } | null {
+  const dot = rawToken.indexOf('.');
+  if (dot <= 0) return null;
+  const rowId = rawToken.slice(0, dot);
+  const secret = rawToken.slice(dot + 1);
+  if (!UUID_RE.test(rowId) || !/^[0-9a-f]{64}$/.test(secret)) return null;
+  return { rowId, secret };
 }
 
-function clearQuestionFailures(email: string): void {
-  questionFailureTracker.delete(email);
+async function isQuestionLocked(email: string, ip: string): Promise<boolean> {
+  const [perIp, perEmail] = await Promise.all([
+    getCounter(failKeyEmailIp(email, ip)),
+    getCounter(failKeyEmail(email)),
+  ]);
+  return perIp >= MAX_FAILURES_PER_EMAIL_IP || perEmail >= MAX_FAILURES_PER_EMAIL;
+}
+
+async function trackQuestionFailure(email: string, ip: string): Promise<void> {
+  await Promise.all([
+    incrementCounter(failKeyEmailIp(email, ip), QUESTION_FAILURE_WINDOW_SEC),
+    incrementCounter(failKeyEmail(email), QUESTION_FAILURE_WINDOW_SEC),
+  ]);
+}
+
+async function clearQuestionFailures(email: string, ip: string): Promise<void> {
+  await deleteKeys(failKeyEmailIp(email, ip), failKeyEmail(email));
 }
 
 async function buildRecoveryOptions(user: {
@@ -101,17 +127,20 @@ export async function sendRecoveryEmail(input: RecoveryEmailInput): Promise<void
     return;
   }
 
-  const rawToken = generateRawToken();
-  const tokenHash = await hashPassword(rawToken);
+  const rowId = crypto.randomUUID();
+  const secret = generateSecret();
+  const tokenHash = await hashPassword(secret);
 
   await prisma.passwordResetToken.create({
     data: {
+      id: rowId,
       userId: user.id,
       tokenHash,
       expiresAt: new Date(Date.now() + EMAIL_TOKEN_TTL_MS),
     },
   });
 
+  const rawToken = buildToken(rowId, secret);
   const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${rawToken}&type=email`;
   await sendPasswordResetEmail(user.email, resetUrl);
 }
@@ -121,8 +150,11 @@ export async function sendRecoveryEmail(input: RecoveryEmailInput): Promise<void
  */
 export async function verifySecurityQuestions(
   input: VerifyQuestionsInput,
+  meta: { ipAddress?: string } = {},
 ): Promise<{ recoveryToken: string }> {
-  if (isQuestionLocked(input.email)) {
+  const ip = meta.ipAddress ?? 'unknown';
+
+  if (await isQuestionLocked(input.email, ip)) {
     throw UnauthorizedError(
       'Too many failed attempts. Please try again in an hour or use email recovery.',
     );
@@ -130,6 +162,7 @@ export async function verifySecurityQuestions(
 
   const user = await usersRepo.findUserByEmail(input.email);
   if (!user || user.status !== 'active') {
+    await trackQuestionFailure(input.email, ip);
     throw UnauthorizedError('Incorrect answers. Please try again.');
   }
 
@@ -140,24 +173,26 @@ export async function verifySecurityQuestions(
 
   const valid = await securityQuestionsRepo.verifyUserSecurityAnswers(user.id, input.answers);
   if (!valid) {
-    trackQuestionFailure(input.email);
+    await trackQuestionFailure(input.email, ip);
     throw UnauthorizedError('Incorrect answers. Please try again.');
   }
 
-  clearQuestionFailures(input.email);
+  await clearQuestionFailures(input.email, ip);
 
-  const rawToken = generateRawToken();
-  const tokenHash = await hashPassword(rawToken);
+  const rowId = crypto.randomUUID();
+  const secret = generateSecret();
+  const tokenHash = await hashPassword(secret);
 
   await prisma.accountRecoverySession.create({
     data: {
+      id: rowId,
       userId: user.id,
       tokenHash,
       expiresAt: new Date(Date.now() + RECOVERY_SESSION_TTL_MS),
     },
   });
 
-  return { recoveryToken: rawToken };
+  return { recoveryToken: buildToken(rowId, secret) };
 }
 
 /**
@@ -171,67 +206,45 @@ export async function verifyRecoveryToken(input: VerifyTokenInput): Promise<{ va
   return { valid: true };
 }
 
+/** Find the live row a token points at and verify its secret. */
+async function findLiveToken(
+  rawToken: string,
+  type: 'email' | 'recovery',
+): Promise<{ id: string; userId: string } | null> {
+  const parsed = parseToken(rawToken);
+  if (!parsed) return null;
+
+  const where = { id: parsed.rowId, usedAt: null, expiresAt: { gt: new Date() } };
+  const stored =
+    type === 'email'
+      ? await prisma.passwordResetToken.findFirst({ where })
+      : await prisma.accountRecoverySession.findFirst({ where });
+  if (!stored) return null;
+
+  const match = await comparePassword(parsed.secret, stored.tokenHash);
+  return match ? { id: stored.id, userId: stored.userId } : null;
+}
+
 async function resolveTokenUserId(
   rawToken: string,
   type: 'email' | 'recovery',
 ): Promise<string | null> {
-  const now = new Date();
-
-  if (type === 'email') {
-    const tokens = await prisma.passwordResetToken.findMany({
-      where: { usedAt: null, expiresAt: { gt: now } },
-    });
-    for (const stored of tokens) {
-      const match = await comparePassword(rawToken, stored.tokenHash);
-      if (match) return stored.userId;
-    }
-    return null;
-  }
-
-  const sessions = await prisma.accountRecoverySession.findMany({
-    where: { usedAt: null, expiresAt: { gt: now } },
-  });
-  for (const stored of sessions) {
-    const match = await comparePassword(rawToken, stored.tokenHash);
-    if (match) return stored.userId;
-  }
-  return null;
+  return (await findLiveToken(rawToken, type))?.userId ?? null;
 }
 
 async function markTokenUsed(rawToken: string, type: 'email' | 'recovery'): Promise<string | null> {
-  const now = new Date();
+  const stored = await findLiveToken(rawToken, type);
+  if (!stored) return null;
 
-  if (type === 'email') {
-    const tokens = await prisma.passwordResetToken.findMany({
-      where: { usedAt: null, expiresAt: { gt: now } },
-    });
-    for (const stored of tokens) {
-      const match = await comparePassword(rawToken, stored.tokenHash);
-      if (match) {
-        await prisma.passwordResetToken.update({
-          where: { id: stored.id },
-          data: { usedAt: now },
-        });
-        return stored.userId;
-      }
-    }
-    return null;
-  }
+  // Conditional update keeps the token single-use even under concurrent resets.
+  const where = { id: stored.id, usedAt: null };
+  const data = { usedAt: new Date() };
+  const { count } =
+    type === 'email'
+      ? await prisma.passwordResetToken.updateMany({ where, data })
+      : await prisma.accountRecoverySession.updateMany({ where, data });
 
-  const sessions = await prisma.accountRecoverySession.findMany({
-    where: { usedAt: null, expiresAt: { gt: now } },
-  });
-  for (const stored of sessions) {
-    const match = await comparePassword(rawToken, stored.tokenHash);
-    if (match) {
-      await prisma.accountRecoverySession.update({
-        where: { id: stored.id },
-        data: { usedAt: now },
-      });
-      return stored.userId;
-    }
-  }
-  return null;
+  return count === 1 ? stored.userId : null;
 }
 
 /**

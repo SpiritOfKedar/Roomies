@@ -11,6 +11,8 @@ import { Request, Response } from 'express';
 import { sendSuccess } from '../../shared/utils/api-response';
 import { NotFoundError } from '../../shared/utils/app-error';
 import * as houseService from './house.service';
+import { reconcileSubmittedTasks } from '../voting/voting.service';
+import { logger } from '../../shared/utils/logger';
 import { getHouseDashboard as loadHouseDashboard } from './house.dashboard.service';
 import type {
   CreateHouseInput,
@@ -103,12 +105,25 @@ export async function addMemberByEmail(req: Request, res: Response): Promise<voi
  * PATCH /api/houses/:id/members/:userId
  * Update member status. Admin for others; self for leave/vacation.
  */
+/**
+ * A member leaving or going on leave lowers the voter count, which can push
+ * pending votes over the majority threshold. Finalize those now. Failures are
+ * logged, not surfaced — the status change itself has already succeeded and
+ * the hourly sweeper retries.
+ */
+async function reconcileAfterMembershipChange(houseId: string): Promise<void> {
+  await reconcileSubmittedTasks(houseId).catch((err) =>
+    logger.error({ err, houseId }, 'Vote reconciliation after membership change failed'),
+  );
+}
+
 export async function updateMemberStatus(req: Request, res: Response): Promise<void> {
   const requestingUserId = req.user!.userId;
   const { id: houseId, userId } = req.params as unknown as MemberParams;
   const { status } = req.body as UpdateMemberStatusInput;
 
   const member = await houseService.updateMemberStatus(requestingUserId, houseId, userId, status);
+  await reconcileAfterMembershipChange(houseId);
 
   sendSuccess(res, member);
 }
@@ -127,6 +142,7 @@ export async function leaveHouse(req: Request, res: Response): Promise<void> {
     requestingUserId,
     'inactive',
   );
+  await reconcileAfterMembershipChange(houseId);
 
   sendSuccess(res, member);
 }

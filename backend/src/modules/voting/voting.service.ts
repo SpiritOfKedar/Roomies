@@ -16,6 +16,7 @@ import * as houseService from '../house/house.service';
 import * as tasksService from '../tasks/tasks.service';
 import type { RotationResult } from '../tasks/tasks.service';
 import { finalizeTaskVotingIfComplete } from './voting.finalize';
+import { logger } from '../../shared/utils/logger';
 import {
   cached,
   houseVotesKey,
@@ -88,17 +89,48 @@ async function selfHealStuckSubmission(taskId: string): Promise<{
   return { healed: true, newStatus: healResult.newStatus, rotation };
 }
 
-function majorityMet(
-  approved: number,
-  rejected: number,
-  majorityThreshold: number,
-  eligibleVoters: number,
-) {
-  return (
-    approved >= majorityThreshold ||
-    rejected >= majorityThreshold ||
-    (eligibleVoters > 0 && approved + rejected >= eligibleVoters)
-  );
+/**
+ * Re-evaluate submitted tasks whose vote threshold may now be met — e.g. after
+ * a member leaves or goes on leave and the eligible-voter count drops.
+ *
+ * This is the only place stuck submissions get finalized outside of castVote.
+ * It runs from write paths (member status changes) and the hourly sweeper,
+ * never from GET handlers, so reads stay free of side effects.
+ *
+ * @param houseId - Limit to one house; omit to sweep every house.
+ * @returns Number of tasks that were finalized.
+ */
+export async function reconcileSubmittedTasks(houseId?: string): Promise<number> {
+  const candidates = await prisma.task.findMany({
+    where: {
+      status: 'submitted',
+      currentSubmissionId: { not: null },
+      ...(houseId && { houseId }),
+    },
+    select: { id: true, houseId: true },
+  });
+
+  let finalized = 0;
+  const touchedHouses = new Set<string>();
+
+  for (const task of candidates) {
+    try {
+      const result = await selfHealStuckSubmission(task.id);
+      if (result.healed) {
+        finalized++;
+        touchedHouses.add(task.houseId);
+        logger.info({ taskId: task.id, newStatus: result.newStatus }, 'Reconciled stuck submission');
+      }
+    } catch (err) {
+      logger.error({ err, taskId: task.id }, 'Failed to reconcile submitted task');
+    }
+  }
+
+  for (const id of touchedHouses) {
+    await invalidateHouseCache(id);
+  }
+
+  return finalized;
 }
 
 /**
@@ -295,7 +327,7 @@ export async function fetchVoteStatusBatchUncached(
  * Get vote status for the current submission round.
  */
 export async function getVoteStatus(userId: string, taskId: string) {
-  let task = await prisma.task.findUnique({
+  const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
       id: true,
@@ -344,25 +376,6 @@ export async function getVoteStatus(userId: string, taskId: string) {
   const { approved, rejected } = await tallySubmissionVotes(prisma, task.currentSubmissionId);
   const userVoteRecord = votes.find((v) => v.userId === userId);
 
-  if (
-    task.status === 'submitted' &&
-    majorityMet(approved, rejected, majorityThreshold, eligibleVoters)
-  ) {
-    const heal = await selfHealStuckSubmission(taskId);
-    if (heal.healed) {
-      task = await prisma.task.findUnique({
-        where: { id: taskId },
-        select: {
-          id: true,
-          houseId: true,
-          assignedTo: true,
-          status: true,
-          currentSubmissionId: true,
-        },
-      });
-      if (!task) throw NotFoundError('Task');
-    }
-  }
 
   const currentStatus = task.status;
   const votingComplete = currentStatus !== 'submitted';
@@ -370,7 +383,7 @@ export async function getVoteStatus(userId: string, taskId: string) {
   return {
     taskId,
     status: currentStatus,
-    submissionId: task.currentSubmissionId,
+    submissionId: task.currentSubmissionId as string | null,
     tallies: { approved, rejected, required: majorityThreshold },
     eligibleVoters,
     votesCast: votes.length,

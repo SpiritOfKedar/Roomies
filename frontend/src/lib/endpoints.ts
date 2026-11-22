@@ -15,6 +15,11 @@ export const authApi = {
     api.post<{ success: boolean; data: AuthTokens }>('/api/auth/login', { email, password }),
   googleLogin: (idToken: string) =>
     api.post<{ success: boolean; data: AuthTokens }>('/api/auth/google', { idToken }),
+  googleExchange: (code: string) =>
+    api.post<{ success: boolean; data: { accessToken: string; refreshToken: string } }>(
+      '/api/auth/google/exchange',
+      { code },
+    ),
   refresh: (refreshToken: string) =>
     api.post<{ success: boolean; data: AuthTokens }>('/api/auth/refresh', { refreshToken }),
   logout: (refreshToken: string) =>

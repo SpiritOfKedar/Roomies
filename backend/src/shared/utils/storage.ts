@@ -12,6 +12,30 @@ import path from 'path';
 import { v2 as cloudinary } from 'cloudinary';
 import { env } from './env';
 import { logger } from './logger';
+import { AppError } from './app-error';
+
+type ImageExt = 'jpg' | 'png' | 'gif' | 'webp';
+
+/**
+ * Identify an image by its magic bytes. The client-supplied mimetype is not
+ * trusted: anything that is not a real JPEG/PNG/GIF/WebP (SVG, HTML, scripts
+ * renamed to .png, …) is rejected.
+ */
+export function detectImageType(buf: Buffer): ImageExt | null {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';
+  if (
+    buf.length >= 8 &&
+    buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) return 'png';
+  const head6 = buf.subarray(0, 6).toString('ascii');
+  if (head6 === 'GIF87a' || head6 === 'GIF89a') return 'gif';
+  if (
+    buf.length >= 12 &&
+    buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buf.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) return 'webp';
+  return null;
+}
 
 let uploadDirReady = false;
 
@@ -34,10 +58,9 @@ async function ensureUploadDir(): Promise<void> {
   uploadDirReady = true;
 }
 
-async function uploadToCloudinary(buffer: Buffer, mimetype: string): Promise<string> {
+async function uploadToCloudinary(buffer: Buffer, ext: ImageExt): Promise<string> {
   initCloudinary();
 
-  const ext = mimetype.split('/')[1]?.replace('jpeg', 'jpg') ?? 'bin';
   const folder = env.CLOUDINARY_FOLDER;
 
   const result = await new Promise<{ secure_url: string }>((resolve, reject) => {
@@ -45,7 +68,7 @@ async function uploadToCloudinary(buffer: Buffer, mimetype: string): Promise<str
       {
         resource_type: 'image',
         folder: folder || undefined,
-        format: ext === 'bin' ? undefined : ext,
+        format: ext,
       },
       (err, res) => {
         if (err || !res?.secure_url) {
@@ -62,10 +85,9 @@ async function uploadToCloudinary(buffer: Buffer, mimetype: string): Promise<str
   return result.secure_url;
 }
 
-async function uploadToLocal(buffer: Buffer, mimetype: string): Promise<string> {
+async function uploadToLocal(buffer: Buffer, ext: ImageExt): Promise<string> {
   await ensureUploadDir();
 
-  const ext = mimetype.split('/')[1]?.replace('jpeg', 'jpg') ?? 'bin';
   const filename = `${randomUUID()}.${ext}`;
   const filePath = path.join(env.UPLOAD_DIR, filename);
 
@@ -79,11 +101,15 @@ async function uploadToLocal(buffer: Buffer, mimetype: string): Promise<string> 
 /**
  * Upload an image buffer to storage and return its public URL.
  */
-export async function uploadImage(buffer: Buffer, mimetype: string): Promise<string> {
-  if (isCloudinaryConfigured()) {
-    return uploadToCloudinary(buffer, mimetype);
+export async function uploadImage(buffer: Buffer, _mimetype?: string): Promise<string> {
+  const ext = detectImageType(buffer);
+  if (!ext) {
+    throw new AppError('Only JPEG, PNG, GIF or WebP images are allowed', 400);
   }
-  return uploadToLocal(buffer, mimetype);
+  if (isCloudinaryConfigured()) {
+    return uploadToCloudinary(buffer, ext);
+  }
+  return uploadToLocal(buffer, ext);
 }
 
 /** Ensure upload directory exists at startup (local fallback). */

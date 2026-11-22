@@ -14,6 +14,7 @@ import { AppError } from '../utils/app-error';
 import { sendError } from '../utils/api-response';
 import { logger } from '../utils/logger';
 import { ZodError } from 'zod';
+import { MulterError } from 'multer';
 
 /**
  * Type guard for Prisma known request errors.
@@ -39,6 +40,13 @@ export function globalErrorHandler(
   if (err instanceof AppError) {
     logger.warn({ statusCode: err.statusCode, message: err.message }, 'Operational error');
     sendError(res, err.message, err.statusCode);
+    return;
+  }
+
+  // --- Upload errors (file too large, too many files, unexpected field) ---
+  if (err instanceof MulterError) {
+    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 5 MB or smaller' : err.message;
+    sendError(res, message, 400);
     return;
   }
 

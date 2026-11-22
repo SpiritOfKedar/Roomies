@@ -29,6 +29,7 @@ import {
 import * as expenseRepo from './expense.repository';
 import * as houseService from '../house/house.service';
 import { logger } from '../../shared/utils/logger';
+import { invalidateHouseCache } from '../../shared/cache/redis-cache';
 
 // ---- Service Functions ----
 
@@ -105,6 +106,8 @@ export async function createExpense(
     'Expense created and splits generated',
   );
 
+  await invalidateHouseCache(houseId);
+
   return expense;
 }
 
@@ -157,6 +160,8 @@ export async function settleExpenseSplit(callerId: string, houseId: string, spli
     { splitId, expenseId: split.expenseId, callerId, owedBy: split.owedBy },
     'Expense split settled',
   );
+
+  await invalidateHouseCache(houseId);
 
   return updated;
 }
