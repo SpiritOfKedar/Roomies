@@ -177,8 +177,16 @@ const FolderComponent = ({
             </motion.div>
           </div>
 
-          <motion.div
+          {/* Roomies: centring lives on a plain wrapper. Under Tailwind v3 the
+              -translate-* classes write `transform`, which motion's inline
+              rotateX transform overwrites (v4 uses the separate `translate`
+              property, so upstream doesn't hit this). */}
+          <div
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 mt-4"
+            style={{ width: 321, height: 241, transformStyle: "preserve-3d" }}
+          >
+          <motion.div
+            className="absolute inset-0"
             style={{
               transformOrigin: "bottom center",
               transformStyle: "preserve-3d",
@@ -261,6 +269,7 @@ const FolderComponent = ({
               </defs>
             </svg>
           </motion.div>
+          </div>
         </div>
       </div>
     </div>
