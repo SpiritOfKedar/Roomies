@@ -5,11 +5,11 @@ import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigat
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { housesApi, swapsApi } from '@/lib/endpoints';
 import { queryKeys } from '@/lib/query-keys';
+import HouseHeader from './components/HouseHeader';
 import HouseTabs, { isHouseTab, type HouseTab } from './components/HouseTabs';
 import { useHouseDashboard } from '@/hooks/useHouseDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import TasksTab, { type TaskView } from './components/TasksTab';
-import BellToggle from '@/components/ui/reactbits/bell-toggle';
 import { useHouseAlerts, useNeedsNotifier } from '@/hooks/useHouseAlerts';
 import Loader from '@/components/ui/Loader';
 import SubmitButton from '@/components/ui/SubmitButton';
@@ -24,7 +24,6 @@ import ChatTab from './components/chat/ChatTab';
 import PenaltiesSection from './components/PenaltiesSection';
 import Modal from '@/components/Modal';
 import toast from 'react-hot-toast';
-import { Icon } from '@/components/Icon';
 
 export default function HousePage() {
   const { id } = useParams<{ id: string }>();
@@ -133,99 +132,20 @@ export default function HousePage() {
 
   return (
     <div>
-      {house ? (
-        <div className="bg-white border border-[#E5E5E5] flex flex-col gap-6 rounded-xl p-8 shadow-sm md:flex-row md:items-start md:justify-between mb-8">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-4 flex-wrap">
-              <h1 className="text-3xl font-bold text-[#171717] tracking-tight">{house.name}</h1>
-              {isAdmin && (
-                <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
-                  Admin
-                </span>
-              )}
-            </div>
-            <p className="text-[#737373] font-light text-lg">
-              {members.length} member{members.length !== 1 ? 's' : ''}
-            </p>
-            {house.inviteCode && isAdmin && (
-              <div className="flex items-center gap-3 mt-2">
-                <span className="text-sm text-[#737373]">Invite code:</span>
-                <code className="text-sm bg-neutral-100 border border-neutral-200 px-3 py-1.5 rounded-lg font-mono text-[#171717] select-all">
-                  {house.inviteCode}
-                </code>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(house.inviteCode!);
-                    toast.success('Copied!');
-                  }}
-                  className="text-sm text-blue-600 hover:text-blue-800 transition-colors font-semibold"
-                >
-                  Copy
-                </button>
-              </div>
-            )}
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              {/* One control: on = badge with what's waiting on you + browser alerts; off = silenced */}
-              <BellToggle
-                pressed={alerts.enabled}
-                onChange={alerts.setEnabled}
-                offLabel="Alerts off"
-                onLabel="Alerts on"
-                label={
-                  alerts.enabled
-                    ? `Alerts on${needsCount ? `, ${needsCount} waiting on you` : ''}. Turn off`
-                    : 'Alerts off. Turn on'
-                }
-                badge
-                count={needsCount}
-                color="#171717"
-                background="#f5f5f5"
-                onColor="#ffffff"
-                onBackground="#171717"
-                size="md"
-              />
-              <button
-                type="button"
-                onClick={() => setShowManageHouse(true)}
-                className="flex items-center gap-2 bg-white border border-[#E5E5E5] hover:border-black text-[#171717] px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm text-sm"
-              >
-                <Icon name="settings" size={18} />
-                Manage House
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4 bg-neutral-50 p-5 rounded-2xl border border-neutral-200 shrink-0">
-            <p className="text-xs font-bold text-[#737373] uppercase tracking-widest">Roommates</p>
-            <div className="flex -space-x-4 overflow-hidden p-1">
-              {members.map((m) => (
-                <div
-                  key={m.userId}
-                  onClick={() => isAdmin && m.userId !== user?.id && setManageRoommateId(m.userId)}
-                  className={`group relative transition-all hover:scale-105 ${isAdmin && m.userId !== user?.id ? 'cursor-pointer hover:z-20' : 'hover:z-10'}`}
-                >
-                  <div className="size-14 rounded-full ring-2 ring-white bg-neutral-800 flex items-center justify-center text-lg font-bold text-white shadow-sm">
-                    {m.user?.name?.[0]?.toUpperCase() ?? '?'}
-                  </div>
-                  <span
-                    className={`absolute bottom-0 right-0 block size-4 rounded-full ring-2 ring-white ${
-                      m.status === 'active' ? 'bg-emerald-500' : 'bg-neutral-400'
-                    }`}
-                  />
-                </div>
-              ))}
-              {isAdmin && (
-                <button
-                  onClick={() => setShowAddMember(true)}
-                  className="flex size-14 z-10 items-center justify-center rounded-full bg-white ring-2 ring-neutral-200 hover:ring-black transition-colors shadow-sm"
-                >
-                  <Icon name="add" size={20} className="text-neutral-400" />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {house && (
+        <HouseHeader
+          house={house}
+          members={members}
+          isAdmin={!!isAdmin}
+          viewerId={user?.id}
+          alertsEnabled={alerts.enabled}
+          onAlertsChange={alerts.setEnabled}
+          needsCount={needsCount}
+          onManageHouse={() => setShowManageHouse(true)}
+          onAddMember={() => setShowAddMember(true)}
+          onManageRoommate={setManageRoommateId}
+        />
+      )}
 
       <HouseTabs
         active={tab}

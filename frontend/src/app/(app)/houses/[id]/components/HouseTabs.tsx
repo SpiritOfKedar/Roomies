@@ -70,7 +70,7 @@ export default function HouseTabs({ active, onChange, badges = {} }: Props) {
   return (
     <>
       <div ref={sentinelRef} aria-hidden="true" className="h-px" />
-      <div className="sticky top-3 md:top-4 z-30 mb-8 flex justify-center">
+      <div className="sticky top-3 md:top-4 z-30 mb-6 flex justify-start">
         <div
           ref={scrollerRef}
           className={clsx(
