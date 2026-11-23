@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
+import { SpecularGetStarted } from './ui/SpecularGetStarted';
 
 const NAV_LINKS = [
   { href: '#features', label: 'Features' },
@@ -46,12 +47,7 @@ export function LandingNav() {
               >
                 Sign in
               </Link>
-              <Link
-                href="/register"
-                className="inline-flex h-8 items-center justify-center rounded-full bg-landing-fg px-4 text-xs font-semibold text-landing-bg transition-colors hover:bg-white"
-              >
-                Get started
-              </Link>
+              <SpecularGetStarted size="sm" />
             </>
           )}
         </div>

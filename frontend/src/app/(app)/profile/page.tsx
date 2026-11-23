@@ -8,6 +8,7 @@ import { usersApi } from '@/lib/endpoints';
 import { SecurityQuestionsForm } from '@/components/SecurityQuestionsForm';
 import type { RecoveryStatus } from '@/types';
 import { Icon } from '@/components/Icon';
+import { DeleteAccountSection } from '@/components/DeleteAccountSection';
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
@@ -136,6 +137,8 @@ export default function ProfilePage() {
           </button>
         </div>
       </div>
+
+      <DeleteAccountSection />
     </div>
   );
 }

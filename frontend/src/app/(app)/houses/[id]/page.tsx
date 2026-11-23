@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
-import { housesApi } from '@/lib/endpoints';
+import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { housesApi, swapsApi } from '@/lib/endpoints';
+import { queryKeys } from '@/lib/query-keys';
+import HouseTabs, { isHouseTab, type HouseTab } from './components/HouseTabs';
 import { useHouseDashboard } from '@/hooks/useHouseDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import TasksTab, { type TaskView } from './components/TasksTab';
@@ -24,22 +26,24 @@ import Modal from '@/components/Modal';
 import toast from 'react-hot-toast';
 import { Icon } from '@/components/Icon';
 
-type Tab = 'tasks' | 'expenses' | 'leaderboard' | 'swaps' | 'chat' | 'penalties';
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'tasks', label: 'Tasks', icon: 'check_circle' },
-  { id: 'chat', label: 'Chat', icon: 'chat' },
-  { id: 'expenses', label: 'Expenses', icon: 'payments' },
-  { id: 'leaderboard', label: 'Leaderboard', icon: 'leaderboard' },
-  { id: 'swaps', label: 'Swaps', icon: 'swap_horiz' },
-  { id: 'penalties', label: 'Penalties', icon: 'gavel' },
-];
-
 export default function HousePage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>('tasks');
+
+  // The open section lives in the URL (?tab=chat) so refresh, back and shared links keep it.
+  const tabParam = searchParams.get('tab');
+  const tab: HouseTab = isHouseTab(tabParam) ? tabParam : 'tasks';
+  const setTab = (next: HouseTab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'tasks') params.delete('tab');
+    else params.set('tab', next);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
   const [taskView, setTaskView] = useState<TaskView>('needs');
 
   // Alerts on: poll every minute (also in the background) so new turns can notify.
@@ -59,6 +63,14 @@ export default function HousePage() {
     [dashboard, user?.id, members],
   );
   useNeedsNotifier(id, house?.name, dashboard ? needsCount : null, alerts.enabled);
+
+  // Same query (and cache) as SwapsTab, so the badge and the tab stay in sync.
+  const { data: swaps = [] } = useQuery({
+    queryKey: queryKeys.swaps(id),
+    queryFn: async () => (await swapsApi.list(id)).data.data ?? [],
+    enabled: !!id,
+  });
+  const incomingSwaps = swaps.filter((s) => s.status === 'pending' && s.receiverId === user?.id).length;
 
   const [showAddMember, setShowAddMember] = useState(false);
   const [addMemberEmail, setAddMemberEmail] = useState('');
@@ -215,24 +227,11 @@ export default function HousePage() {
         </div>
       ) : null}
 
-      <div className="w-full mb-8">
-        <nav className="flex gap-2 p-1.5 overflow-x-auto bg-neutral-100 rounded-xl border border-neutral-200">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`group flex-1 inline-flex justify-center items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all whitespace-nowrap ${
-                tab === t.id
-                  ? 'bg-white text-[#171717] shadow-sm ring-1 ring-black/5'
-                  : 'text-[#737373] hover:text-[#171717] hover:bg-white/50'
-              }`}
-            >
-              <Icon name={t.icon} size={20} />
-              {t.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+      <HouseTabs
+        active={tab}
+        onChange={setTab}
+        badges={{ tasks: needsCount, swaps: incomingSwaps }}
+      />
 
       <div className="bg-white rounded-xl border border-[#E5E5E5] p-6 shadow-sm">
         {house && tab === 'tasks' && (

@@ -16,6 +16,7 @@ import { validate } from '../../shared/middleware/validate';
 import {
   setSecurityQuestionsSchema,
   deleteSecurityQuestionsSchema,
+  deleteAccountSchema,
 } from '../auth/recovery.schema';
 import * as usersController from './users.controller';
 
@@ -42,6 +43,13 @@ router.delete(
   requireAuth,
   validate({ body: deleteSecurityQuestionsSchema }),
   asyncHandler(usersController.deleteSecurityQuestions),
+);
+
+router.delete(
+  '/me',
+  requireAuth,
+  validate({ body: deleteAccountSchema }),
+  asyncHandler(usersController.deleteAccount),
 );
 
 export default router;

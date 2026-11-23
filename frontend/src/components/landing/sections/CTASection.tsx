@@ -5,6 +5,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGsapScope } from '../hooks/useGsapScope';
 import { GlowButton } from '../ui/GlowButton';
+import { SpecularGetStarted } from '@/components/landing/ui/SpecularGetStarted';
 import { REVEAL_EASE } from '../utils/gsapDefaults';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -58,7 +59,7 @@ export function CTASection({ reducedMotion }: CTASectionProps) {
             className="pointer-events-none absolute top-1/2 left-1/2 h-16 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.05] blur-2xl"
             aria-hidden="true"
           />
-          <GlowButton href="/register">Get started</GlowButton>
+          <SpecularGetStarted />
           <GlowButton href="/login" variant="secondary">
             Sign in
           </GlowButton>

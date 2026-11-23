@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { motion } from 'motion/react';
 import { useAuth } from '@/hooks/useAuth';
 import { Icon } from '@/components/Icon';
 import { RailToc, type RailTocItem } from '@/components/ui/rare/rail-toc';
@@ -14,6 +15,20 @@ const navItems = [
   { label: 'Expenses',  href: '/expenses',  icon: 'payments' },
   { label: 'Community', href: '/community', icon: 'group' },
 ];
+
+const mobileItems = [
+  { label: 'Houses', href: '/dashboard', icon: 'dashboard' },
+  { label: 'Tasks', href: '/tasks', icon: 'check_circle' },
+  { label: 'Expenses', href: '/expenses', icon: 'payments' },
+  { label: 'Community', href: '/community', icon: 'group' },
+  { label: 'Profile', href: '/profile', icon: 'person' },
+];
+
+/** House pages count as "Houses" so the dock never sits with nothing selected. */
+function isMobileActive(href: string, pathname: string): boolean {
+  if (href === '/dashboard') return pathname === '/dashboard' || pathname.startsWith('/houses');
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 /** Houses listed under "My Houses" in the rail; more than this and the list links to the dashboard. */
 const MAX_RAIL_HOUSES = 5;
@@ -126,32 +141,49 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-[#E5E5E5] flex items-center justify-around px-2 py-1 safe-area-bottom">
-        {navItems.map(item => {
-          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex flex-col items-center gap-0.5 py-2 px-3 rounded-lg text-[10px] font-bold transition-colors ${
-                active ? 'text-[#171717]' : 'text-[#737373]'
-              }`}
-            >
-              <Icon name={item.icon} size={22} />
-              {item.label}
-            </Link>
-          );
-        })}
-        <Link
-          href="/profile"
-          className={`flex flex-col items-center gap-0.5 py-2 px-3 rounded-lg text-[10px] font-bold transition-colors ${
-            pathname === '/profile' ? 'text-[#171717]' : 'text-[#737373]'
-          }`}
-        >
-          <Icon name="person" size={22} />
-          Profile
-        </Link>
+      {/* Mobile: floating glass dock. Icons only; the active item grows into a labelled pill. */}
+      <nav
+        aria-label="Main"
+        className="md:hidden fixed inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
+        style={{ bottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+      >
+        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-black/[0.06] bg-white/75 p-1.5 shadow-[0_12px_36px_-10px_rgba(0,0,0,0.28)] backdrop-blur-xl backdrop-saturate-150">
+          {mobileItems.map((item) => {
+            const active = isMobileActive(item.href, pathname);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-label={item.label}
+                aria-current={active ? 'page' : undefined}
+                className={`relative flex h-11 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                  active ? 'px-4 text-white' : 'w-11 text-[#737373] active:text-[#171717]'
+                }`}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="mobile-dock-pill"
+                    className="absolute inset-0 rounded-full bg-[#171717]"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-2">
+                  <Icon name={item.icon} size={20} />
+                  {active && (
+                    <motion.span
+                      initial={{ opacity: 0, x: -4 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2, delay: 0.05 }}
+                      className="whitespace-nowrap"
+                    >
+                      {item.label}
+                    </motion.span>
+                  )}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
       </nav>
     </>
   );

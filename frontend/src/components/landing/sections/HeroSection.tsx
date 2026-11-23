@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { PillBadge } from '../ui/PillBadge';
 import { GlowButton } from '../ui/GlowButton';
+import { SpecularGetStarted } from '@/components/landing/ui/SpecularGetStarted';
 import { splitWords } from '../utils/splitWords';
 import { REVEAL_EASE, STAGGER } from '../utils/gsapDefaults';
 
@@ -122,7 +123,7 @@ export function HeroSection({ reducedMotion }: HeroSectionProps) {
             className="pointer-events-none absolute top-1/2 left-1/2 h-20 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.06] blur-3xl"
             aria-hidden="true"
           />
-          <GlowButton href="/register">Get started</GlowButton>
+          <SpecularGetStarted />
           <GlowButton href="#showcase" variant="secondary">
             <span className="flex items-center gap-2">
               See features

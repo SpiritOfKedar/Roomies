@@ -48,6 +48,11 @@ export const deleteSecurityQuestionsSchema = z.object({
   currentPassword: z.string().optional(),
 });
 
+export const deleteAccountSchema = z.object({
+  currentPassword: z.string().optional(),
+});
+
+export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
 export type RecoveryEmailInput = z.infer<typeof recoveryEmailSchema>;
 export type VerifyQuestionsInput = z.infer<typeof verifyQuestionsSchema>;
 export type VerifyTokenInput = z.infer<typeof verifyTokenSchema>;

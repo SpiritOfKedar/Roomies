@@ -50,6 +50,10 @@ export const recoveryApi = {
 };
 
 export const usersApi = {
+  deleteAccount: (currentPassword?: string) =>
+    api.delete<{ success: boolean; data: { message: string } }>('/api/users/me', {
+      data: currentPassword ? { currentPassword } : {},
+    }),
   getRecoveryStatus: () =>
     api.get<{ success: boolean; data: RecoveryStatus }>('/api/users/me/recovery'),
   setSecurityQuestions: (
