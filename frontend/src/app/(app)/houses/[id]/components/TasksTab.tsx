@@ -76,16 +76,27 @@ export default function TasksTab({ house, members, isAdmin, prefetchedDashboard,
   );
   const asTurns = (cs: Chore[]): ChecklistTurn[] => cs.map((chore) => ({ chore, task: chore.activeInstance }));
 
+  // Phones: a small pill beside the filter, so it doesn't sit between the filter and the list.
+  // Desktop: the full-width button under the filter rail.
   const newChoreButton = isAdmin && (
-    <button type="button" onClick={() => setShowNew(true)} className="btn-primary w-full">
+    <button
+      type="button"
+      onClick={() => setShowNew(true)}
+      aria-label="New chore"
+      className={
+        'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-900 shadow-sm transition-colors active:bg-neutral-50 ' +
+        'md:w-full md:rounded-lg md:border-transparent md:bg-neutral-900 md:px-5 md:py-2.5 md:text-white md:hover:bg-neutral-800'
+      }
+    >
       <Plus className="size-4" />
-      New chore
+      <span className="md:hidden">New</span>
+      <span className="hidden md:inline">New chore</span>
     </button>
   );
 
   return (
     <div className="flex flex-col gap-6 md:flex-row md:gap-10">
-      <aside className="flex shrink-0 flex-col gap-6 md:w-48">
+      <aside className="flex shrink-0 flex-row items-start justify-between gap-4 md:w-48 md:flex-col md:items-stretch md:justify-start md:gap-6">
         <HookSidebar
           label="Chores"
           color="#171717"

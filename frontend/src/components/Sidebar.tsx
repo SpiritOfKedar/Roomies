@@ -81,6 +81,8 @@ export default function Sidebar() {
   });
   const railItems = useMemo(() => buildRail(houses), [houses]);
   const activeRail = activeRailIndex(railItems, pathname);
+  // A house page shows its own section dock on phones (see HouseTabs), so this one steps aside.
+  const houseDock = /^\/houses\/[^/]+\/?$/.test(pathname);
 
   return (
     <>
@@ -142,6 +144,7 @@ export default function Sidebar() {
       </aside>
 
       {/* Mobile: floating glass dock. Icons only; the active item grows into a labelled pill. */}
+      {!houseDock && (
       <nav
         aria-label="Main"
         className="md:hidden fixed inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
@@ -185,6 +188,7 @@ export default function Sidebar() {
           })}
         </div>
       </nav>
+      )}
     </>
   );
 }

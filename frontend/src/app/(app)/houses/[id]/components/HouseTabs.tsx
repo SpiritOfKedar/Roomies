@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
+import Link from 'next/link';
 import clsx from 'clsx';
 import { Icon } from '@/components/Icon';
 
@@ -30,7 +31,8 @@ type Props = {
 /**
  * Sticky segmented tab bar for a house. A dark pill slides to the active tab;
  * once the bar sticks to the top it turns frosted so content can scroll under it.
- * On narrow screens it scrolls sideways and keeps the active tab in view.
+ * On phones this top bar is hidden and the sections live in the bottom dock instead
+ * (the app's own dock steps aside on house pages), so there is only one navbar.
  */
 export default function HouseTabs({ active, onChange, badges = {} }: Props) {
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -70,7 +72,7 @@ export default function HouseTabs({ active, onChange, badges = {} }: Props) {
   return (
     <>
       <div ref={sentinelRef} aria-hidden="true" className="h-px" />
-      <div className="sticky top-3 md:top-4 z-30 mb-6 flex justify-start">
+      <div className="sticky top-4 z-30 mb-6 hidden md:flex justify-start">
         <div
           ref={scrollerRef}
           className={clsx(
@@ -130,6 +132,60 @@ export default function HouseTabs({ active, onChange, badges = {} }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Mobile: the house sections take over the bottom dock. */}
+      <nav
+        aria-label="House sections"
+        className="md:hidden fixed inset-x-0 z-50 flex justify-center px-3 pointer-events-none"
+        style={{ bottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+      >
+        <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-black/[0.06] bg-white/75 p-1.5 shadow-[0_12px_36px_-10px_rgba(0,0,0,0.28)] backdrop-blur-xl backdrop-saturate-150">
+          <Link
+            href="/dashboard"
+            aria-label="All houses"
+            className="flex h-11 w-10 items-center justify-center rounded-full text-[#737373] active:text-[#171717]"
+          >
+            <Icon name="chevron_left" size={22} />
+          </Link>
+          <span aria-hidden="true" className="mx-0.5 h-6 w-px bg-black/10" />
+          {HOUSE_TABS.map((t) => {
+            const selected = t.id === active;
+            const count = badges[t.id] ?? 0;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                aria-label={count > 0 ? `${t.label}, ${count} waiting` : t.label}
+                aria-current={selected ? 'page' : undefined}
+                onClick={() => onChange(t.id)}
+                className={clsx(
+                  'relative flex h-11 w-10 items-center justify-center rounded-full transition-colors',
+                  selected ? 'text-white' : 'text-[#737373] active:text-[#171717]',
+                )}
+              >
+                {selected && (
+                  <motion.span
+                    layoutId="house-dock-pill"
+                    className="absolute inset-0 rounded-full bg-[#171717]"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                  />
+                )}
+                <span className="relative z-10">
+                  <Icon name={t.icon} size={20} />
+                </span>
+                {count > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-0 top-0.5 z-20 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white tabular-nums"
+                  >
+                    {count > 9 ? '9+' : count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </>
   );
 }
