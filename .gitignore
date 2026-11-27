@@ -49,6 +49,13 @@ prisma/migrations/**/migration_lock.toml
 backend/uploads/
 
 # ---- Misc ----
+# taste-skill working folder (deal history, screenshots, headless Chrome profile)
+.taste-skill/
+# agent skills (design tooling only; reinstall with: npx skills add Leonxlnx/taste-skill).
+# The landing page's runtime files live in frontend/public/ and stay committed.
+.agents/
+.claude/skills/
+skills-lock.json
 .cache/
 tmp/
 temp/

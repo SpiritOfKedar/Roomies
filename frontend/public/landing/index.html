@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en" data-type="software" data-radius="round" data-ground="sand" data-buttons="pill" data-motion>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roomies: fair chores for shared houses</title>
+<meta name="description" content="Roomies rotates chores between roommates, checks each job through a photo and a house vote, and splits shared bills.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Roomies: fair chores for shared houses">
+<meta property="og:description" content="Turns picked by rotation, jobs approved from a photo, bills split between roommates.">
+<meta property="og:image" content="/landing/share.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#fafafa">
+<!-- <link rel="canonical" href="https://[the Roomies domain]/"> : once the domain is known -->
+<meta name="site-kind" content="software">
+<meta name="page-type" content="software">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..700&family=JetBrains+Mono:wght@400..500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/system.css">
+<link rel="stylesheet" href="/assets/ui/cards.css">
+<link rel="stylesheet" href="/assets/motion/motion.css">
+<link rel="stylesheet" href="/assets/backgrounds/backgrounds.css">
+<link rel="stylesheet" href="/assets/layout/layout.css">
+<link rel="stylesheet" href="/assets/icons/icon.css">
+<link rel="stylesheet" href="/assets/ui/base.css">
+<link rel="stylesheet" href="/assets/ui/window/fragment.css">
+<link rel="stylesheet" href="/landing/landing.css">
+<link rel="stylesheet" href="/landing/hero.css">
+<script>document.documentElement.classList.add('m-enter');setTimeout(()=>document.documentElement.classList.add('m-enter-done'),700)</script>
+<script src="/assets/backgrounds/backgrounds.js"></script>
+<script>document.documentElement.classList.add('mo-js');setTimeout(()=>document.documentElement.classList.add('mo-safe'),2500)</script>
+<link rel="modulepreload" href="/assets/moments/moments.js">
+<link rel="modulepreload" href="/assets/moments/lib.js">
+<link rel="modulepreload" href="/assets/moments/pinned-chapters/moment.js">
+</head>
+<body>
+<!-- type: software (an app for roommates in a shared house)
+     deal: hero triptych, nav nav-centre, close close-word, footer footer-statement, rhythm space, buttons pill,
+     mark ring replaced by the client's own logo (the app's black tile with its house glyph), ground sand,
+     palette: the client's own (start.mjs brand: #fafafa / #ffffff / #171717, Manrope), radius round
+     grounds: none (flat page tokens; panels on the lit sand ground). effect: none.
+     moments: pinned-chapters in #turns (three steps of one turn, one frame that changes with each)
+     loops: the hero collage's sets (layout.js) and the chore list in #chores (data-ui-loop) -->
+
+<!-- the liquid lens: Chromium bends the page behind the glass with it (hero.css, .rm-glass--liquid) -->
+<svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="rm-liquid" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.014" numOctaves="2" seed="11" result="noise"/>
+      <feGaussianBlur in="noise" stdDeviation="2.5" result="soft"/>
+      <feDisplacementMap in="SourceGraphic" in2="soft" scale="34" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <linearGradient id="rm-arc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#10b981" stop-opacity="0"/><stop offset="1" stop-color="#10b981"/></linearGradient>
+  </defs>
+</svg>
+
+<a class="rm-skip" href="#top">Skip to content</a>
+<header class="rm-nav" data-rm-nav>
+  <div class="rm-nav__bar rm-glass rm-glass--liquid">
+    <a class="rm-nav__logo" href="#top" aria-label="Roomies, back to the top">
+      <span class="rm-nav__mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path class="rm-roof" d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/></svg></span>
+      Roomies
+    </a>
+    <nav class="rm-nav__links" aria-label="Main">
+      <span class="rm-nav__pill" aria-hidden="true"></span>
+      <a href="#chores">Chores</a>
+      <a href="#turns">Voting</a>
+      <a href="#house">Expenses</a>
+      <a href="#questions">Questions</a>
+    </nav>
+    <div class="rm-nav__actions">
+      <a class="rm-nav__signin" href="/login" data-signin>Sign in</a>
+      <a class="rm-cta rm-cta--sm" href="/register">Start a house<span class="rm-cta__arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></svg></span></a>
+      <button class="rm-nav__burger" type="button" aria-expanded="false" aria-controls="rm-sheet" aria-label="Open menu"><i></i><i></i></button>
+    </div>
+    <span class="rm-nav__progress" aria-hidden="true"><i></i></span>
+  </div>
+  <div class="rm-sheet rm-glass" id="rm-sheet">
+    <a href="#chores">Chores</a>
+    <a href="#turns">Voting</a>
+    <a href="#house">Expenses</a>
+    <a href="#questions">Questions</a>
+    <a href="/login" data-signin>Sign in</a>
+    <a class="rm-cta" href="/register">Start a house<span class="rm-cta__arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></svg></span></a>
+  </div>
+</header>
+
+<main id="top">
+  <!-- HERO: the turn orbit (hero.css, hero.js). Four roommates on a ring, a hand that turns to whoever is
+       next, and one turn played through in the glass card: picked, handed in with a photo, approved, points. -->
+  <section class="rm-hero" id="hero" aria-labelledby="hero-h">
+    <div class="rm-hero__bg" aria-hidden="true">
+      <span class="rm-blob rm-blob--d"></span>
+      <span class="rm-blob rm-blob--a"></span>
+      <span class="rm-blob rm-blob--b"></span>
+      <span class="rm-blob rm-blob--c"></span>
+      <span class="rm-hero__grid"></span>
+      <span class="rm-hero__grain"></span>
+      <span class="rm-hero__spot"></span>
+    </div>
+
+    <div class="rm-hero__wrap">
+      <div class="rm-hero__copy">
+        <a class="rm-badge rm-glass" href="#turns"><span class="rm-badge__dot" aria-hidden="true"></span><span>Turns rotate on their own</span><span class="rm-badge__more">See how<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8M6.5 2.5 10 6l-3.5 3.5"/></svg></span></a>
+        <h1 id="hero-h" class="rm-title" aria-label="Fair turns for every chore in the house">
+          <span class="rm-title__line" aria-hidden="true"><span class="rm-word" style="animation-delay: .25s">Fair</span> <span class="rm-word" style="animation-delay: .33s">turns</span> <span class="rm-word" style="animation-delay: .41s">for</span></span>
+          <span class="rm-title__line" aria-hidden="true"><span class="rm-word rm-swap" data-rm-swap data-words="the dishes.|the bins.|the laundry.|the bathroom." style="animation-delay: .49s"><span class="rm-swap__word">the dishes.</span><svg class="rm-swap__line" viewBox="0 0 300 20" preserveAspectRatio="none"><path pathLength="1" d="M4 13 C 60 5, 130 4, 190 9 S 272 15, 296 7"/></svg></span></span>
+        </h1>
+        <p class="rm-hero__lead">Roomies picks whose turn it is, your roommates approve the job from a photo, and <b>nobody holds more than 2 open chores.</b></p>
+        <div class="rm-hero__ctas">
+          <a class="rm-cta" href="/register">Start a house<span class="rm-cta__arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></svg></span></a>
+          <a class="rm-ghost rm-glass" href="#turns"><span class="rm-ghost__play" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M3 1.8v8.4a.6.6 0 0 0 .9.5l6.6-4.2a.6.6 0 0 0 0-1L3.9 1.3a.6.6 0 0 0-.9.5z"/></svg></span><span>See how a turn works</span></a>
+        </div>
+        <ul class="rm-facts">
+          <li><i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></i>Photo proof for every job</li>
+          <li><i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></i>Majority vote</li>
+          <li><i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg></i>Bills split equally</li>
+        </ul>
+      </div>
+
+      <div class="rm-stage" data-rm-stage>
+        <div class="rm-stage__tilt" role="img" aria-label="Roomies passing chores around a house of four: Aditi, Leo, Mei and Jonas sit on a ring, a hand points at whoever's turn it is, and a card shows the turn handed in with a photo, approved by two roommates and worth 10 points">
+          <span class="rm-ring-spin" aria-hidden="true"><svg viewBox="0 0 600 600"><circle cx="300" cy="300" r="231"/></svg></span>
+          <svg class="rm-orbit" viewBox="0 0 600 600" aria-hidden="true">
+            <circle class="rm-ring-inner" cx="300" cy="300" r="170"/>
+            
+            <circle class="rm-ring-glow" cx="300" cy="300" r="231"/>
+          </svg>
+
+          <div class="rm-hand" aria-hidden="true"><span class="rm-hand__stem"></span><span class="rm-hand__head"><svg viewBox="0 0 24 24"><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/></svg></span></div>
+
+          <div class="rm-node is-turn" data-i="0"><div class="rm-node__disc rm-glass"><b>A</b><span class="rm-node__ring"></span></div><span class="rm-node__vote"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span class="rm-node__name">Aditi</span></div>
+          <div class="rm-node has-vote" data-i="1"><div class="rm-node__disc rm-glass"><b>L</b><span class="rm-node__ring"></span></div><span class="rm-node__vote"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span class="rm-node__name">Leo</span></div>
+          <div class="rm-node" data-i="2"><div class="rm-node__disc rm-glass"><b>M</b><span class="rm-node__ring"></span></div><span class="rm-node__vote"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span class="rm-node__name">Mei</span></div>
+          <div class="rm-node" data-i="3"><div class="rm-node__disc rm-glass"><b>J</b><span class="rm-node__ring"></span></div><span class="rm-node__vote"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span class="rm-node__name">Jonas</span></div>
+
+          <div class="rm-tc-wrap">
+            <div class="rm-tc rm-glass rm-glass--liquid" data-phase="2" style="--bar: 50%">
+              <div class="rm-tc__top"><span class="rm-tc__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="m3 17 2 2 4-4"/><path d="M13 18h8"/></svg></span><div class="rm-swapfield"><p class="rm-tc__chore" data-f="chore">Wash up after dinner</p><p class="rm-tc__meta" data-f="meta">Repeats after each turn · 10 points</p></div></div>
+              <div class="rm-tc__who"><span class="rm-av rm-swapfield" data-f="av">A</span><div class="rm-swapfield"><b data-f="who">Aditi's turn</b><span data-f="due">Due tonight, 21:00</span></div><span class="rm-tc__tick"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg></span></div>
+              <div class="rm-tc__status"><span class="rm-chip rm-chip--info" data-f="chip">In review</span><span class="rm-tc__votes" data-f="votes">1 of 2 approvals</span></div>
+              <span class="rm-tc__bar"><i></i></span>
+              <ol class="rm-tc__steps"><li class="is-done">Picked</li><li class="is-done">Handed in</li><li>Approved</li></ol>
+            </div>
+          </div>
+
+          <figure class="rm-sat rm-sat--photo" style="margin: 0"><img src="/landing/img/photo-f16290270-500.jpg" width="500" height="375" alt="" data-source="stand-in" data-subject="the photo a roommate handed in for the chore"><span>Proof photo<em>just now</em></span></figure>
+          <div class="rm-sat rm-sat--points" aria-hidden="true">+10 points</div>
+          <div class="rm-sat rm-sat--bill rm-glass rm-bob-a"><small>Groceries</small><b>₹2,480</b><span><i><b>A</b><b>L</b><b>M</b><b>J</b></i>₹620 each</span></div>
+          <div class="rm-sat rm-sat--swap rm-glass rm-bob-b"><i><svg viewBox="0 0 24 24"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg></i><span>Leo swapped with Jonas<em>Bins, Thursday</em></span></div>
+        </div>
+        <button class="rm-stage__pause rm-glass" type="button" aria-label="Pause the animation"><svg class="rm-i-pause" viewBox="0 0 16 16"><rect x="3.5" y="3" width="3" height="10" rx="1"/><rect x="9.5" y="3" width="3" height="10" rx="1"/></svg><svg class="rm-i-play" viewBox="0 0 16 16"><path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5z"/></svg></button>
+      </div>
+    </div>
+
+    <a class="rm-scrollcue" href="#chores" aria-label="Scroll to the chores"></a>
+  </section>
+
+  <!-- APP-FRAME: the product big, the chore list beside the open chore -->
+  <section class="section" id="chores" aria-labelledby="chores-h">
+    <div class="wrap">
+      <div class="grid">
+        <h2 class="span-5" id="chores-h">The house's chores, turn by turn</h2>
+        <div class="span-6 start-7 stack-4">
+          <p class="muted">Open a chore to see the photo, the votes so far and every earlier turn. An approved turn passes the chore to the next roommate.</p>
+          <a class="link" href="#turns">See how a turn works</a>
+        </div>
+      </div>
+      <div class="ui app fill" role="img" aria-label="The Roomies chore list for Flat 12 beside the open chore Wash up after dinner, with Aditi's photo, one of two approvals and the earlier turns" data-ui-pause-host>
+        <div class="app__pane app__pane--list" data-ui-loop>
+          <div class="ui ui-panel ui-win" data-ui="window" data-open="In review" data-work="Voting" data-done="Done">
+            <div class="ui-win__bar">
+              <span class="ui-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="ui-win__crumb"><svg class="rm-logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#171717"/><g transform="translate(7 7) scale(.75)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></g></svg>Flat 12 <i>/</i> <b>Tasks</b></span>
+              <span class="ui-spacer"></span>
+              <span class="ui-win__search" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span class="ui-win__ph">Search</span><span class="ui-kbd">/</span></span>
+            </div>
+            <div class="ui-win__body">
+              <nav class="ui-win__side" aria-hidden="true">
+                <span class="ui-win__nav is-on"><svg class="ui-icon" viewBox="0 0 16 16"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg>Tasks<em>6</em></span>
+                <span class="ui-win__nav"><svg class="ui-icon" viewBox="0 0 16 16"><circle cx="8" cy="6" r="2.5"/><path d="M3.5 13.5c.6-2.3 2.4-3.5 4.5-3.5s3.9 1.2 4.5 3.5"/></svg>Mine<em>2</em></span>
+                <span class="ui-win__nav"><svg class="ui-icon" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg>Finished<em>31</em></span>
+                <span class="ui-win__label">House</span>
+                <span class="ui-win__nav"><span class="ui-win__hash">₹</span>Expenses</span>
+                <span class="ui-win__nav"><span class="ui-win__hash">⇄</span>Swaps</span>
+                <span class="ui-win__nav"><span class="ui-win__hash">#</span>Chat</span>
+              </nav>
+              <div class="ui-win__main">
+                <div class="ui-win__cols" aria-hidden="true"><span>Roommate</span><span>Chore</span><span>Status</span><span>Due</span></div>
+                <ul class="ui-win__rows">
+                  <li class="ui-win__row" data-row><span class="ui-avatar">A</span><span class="ui-win__who">Aditi Rao</span><span class="ui-win__sub">Wash up after dinner</span><span class="ui-win__st rm-chip--info" data-st>In review</span><span class="ui-win__age">2h</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar">M</span><span class="ui-win__who">Mei Tan</span><span class="ui-win__sub">Clean the bathroom sink</span><span class="ui-win__st rm-chip--info" data-st>In review</span><span class="ui-win__age">5h</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar">L</span><span class="ui-win__who">Leo Marsh</span><span class="ui-win__sub">Laundry, towels</span><span class="ui-win__st rm-chip--warning" data-st>Changes requested</span><span class="ui-win__age">Fri</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar">J</span><span class="ui-win__who">Jonas Weber</span><span class="ui-win__sub">Take the bins out</span><span class="ui-win__st rm-chip--neutral" data-st>To do</span><span class="ui-win__age">Thu</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar">A</span><span class="ui-win__who">Aditi Rao</span><span class="ui-win__sub">Hoover the stairs</span><span class="ui-win__st rm-chip--neutral" data-st>To do</span><span class="ui-win__age">Sat</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar">J</span><span class="ui-win__who">Jonas Weber</span><span class="ui-win__sub">Mop the kitchen floor</span><span class="ui-win__st rm-chip--neutral" data-st>To do</span><span class="ui-win__age">Sun</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar">M</span><span class="ui-win__who">Mei Tan</span><span class="ui-win__sub">Water the plants</span><span class="ui-win__st rm-chip--success" data-st>Done</span><span class="ui-win__age">1d</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar">L</span><span class="ui-win__who">Leo Marsh</span><span class="ui-win__sub">Restock toilet roll</span><span class="ui-win__st rm-chip--success" data-st>Done</span><span class="ui-win__age">2d</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar">J</span><span class="ui-win__who">Jonas Weber</span><span class="ui-win__sub">Clear out the fridge</span><span class="ui-win__st rm-chip--success" data-st>Done</span><span class="ui-win__age">3d</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar">A</span><span class="ui-win__who">Aditi Rao</span><span class="ui-win__sub">Descale the kettle</span><span class="ui-win__st rm-chip--success" data-st>Done</span><span class="ui-win__age">4d</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="app__pane app__pane--open">
+          <div class="ui ui-panel rm-turn">
+            <div class="rm-turn__bar"><span>Chores</span><span>/</span><b>Wash up after dinner</b><span class="ui-spacer"></span><span class="rm-chip rm-chip--info">In review</span></div>
+            <div class="rm-turn__body">
+              <div class="rm-turn__head">
+                <div><h4>Wash up after dinner</h4><p>Repeats after each turn · Turn 14 · 10 points</p></div>
+              </div>
+              <div class="rm-turn__grid">
+                <div class="rm-proof"><img src="/landing/img/photo-f14655512-960.jpg" srcset="/landing/img/photo-f14655512-500.jpg 500w, /landing/img/photo-f14655512-960.jpg 960w, /landing/img/photo-f14655512.jpg 1280w" sizes="(max-width: 639px) 300px, 400px" width="960" height="698" alt="" loading="lazy" decoding="async" data-source="stand-in" data-subject="clean plates standing in a wall-mounted dish rack"></div>
+                <div class="rm-votes">
+                  <span class="rm-muted">Approvals</span>
+                  <span class="rm-votes__count">1 of 2</span>
+                  <span class="rm-bar"><i style="width: 50%"></i></span>
+                  <div class="rm-voter"><span class="rm-av">M</span><span>Mei Tan</span><span class="rm-chip rm-chip--success">Approved</span></div>
+                  <div class="rm-voter"><span class="rm-av">L</span><span>Leo Marsh</span><span class="rm-chip rm-chip--neutral">Waiting</span></div>
+                  <div class="rm-voter"><span class="rm-av">J</span><span>Jonas Weber</span><span class="rm-chip rm-chip--neutral">Waiting</span></div>
+                  <div class="rm-votes__btns"><span class="rm-btn">Approve</span><span class="rm-btn rm-btn--line">Request changes</span></div>
+                </div>
+              </div>
+              <div class="rm-note"><span class="rm-av">A</span><p><span class="rm-muted">Aditi · 21:40</span><br>Pans are soaking in the sink. Everything else is dried and put away.</p></div>
+              <div class="rm-hist">
+                <span class="rm-hist__lbl">Earlier turns</span>
+                <div class="rm-hist__row"><span class="rm-av">J</span><span>Turn 13 · Jonas Weber</span><span class="rm-chip rm-chip--success">Done</span></div>
+                <div class="rm-hist__row"><span class="rm-av">M</span><span>Turn 12 · Mei Tan</span><span class="rm-chip rm-chip--success">Done</span></div>
+                <div class="rm-hist__row"><span class="rm-av">L</span><span>Turn 11 · Leo Marsh</span><span class="rm-chip rm-chip--danger">Missed</span></div>
+                <div class="rm-hist__row"><span class="rm-av">A</span><span>Turn 10 · Aditi Rao</span><span class="rm-chip rm-chip--success">Done</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PINNED-CHAPTERS (moment): one turn of "Mop the kitchen floor", from the pick to the vote -->
+  <section class="section" id="turns" style="--h: 2" data-moment="pinned-chapters" aria-labelledby="turns-h">
+    <div class="wrap mo-pc__grid">
+      <div class="mo-pc__text">
+        <h2 id="turns-h">How a turn works, in 3 steps</h2>
+        <ol class="mo-pc__steps">
+          <li class="mo-pc__step">
+            <h3>Roomies picks the next roommate</h3>
+            <p>It skips whoever did the chore last and anyone holding two open chores, then picks who has done it least lately.</p>
+            <figure class="mo-pc__visual"><div class="rm-shot" role="img" aria-label="Roomies choosing who mops the kitchen floor next: Leo and Aditi are skipped, Jonas is picked">
+              <div class="ui rm-card">
+                <div class="rm-card__head"><p class="rm-card__title">Mop the kitchen floor</p><span class="rm-card__lbl">Next turn</span></div>
+                <div class="rm-pick rm-pick--out"><span class="rm-av">L</span><span>Leo Marsh<small>Did it last</small></span><span class="rm-chip rm-chip--neutral">Skipped</span></div>
+                <div class="rm-pick rm-pick--out"><span class="rm-av">A</span><span>Aditi Rao<small>2 open chores</small></span><span class="rm-chip rm-chip--neutral">Skipped</span></div>
+                <div class="rm-pick"><span class="rm-av">M</span><span>Mei Tan<small>Last did it 9 days ago</small></span></div>
+                <div class="rm-pick"><span class="rm-av rm-av--on">J</span><span>Jonas Weber<small>Last did it 23 days ago</small></span><span class="rm-chip rm-chip--ink">Picked</span></div>
+                <div class="rm-pick"><span></span><span class="rm-card__lbl">Jonas's turn · due Sunday, 20:00</span></div>
+              </div>
+            </div></figure>
+          </li>
+          <li class="mo-pc__step">
+            <h3>You hand in a photo</h3>
+            <p>Tick the chore, attach a photo and add a line if the job needs one. The turn moves to In review.</p>
+            <figure class="mo-pc__visual"><div class="rm-shot" role="img" aria-label="Jonas handing in Mop the kitchen floor with a photo of the mop bucket and a short note">
+              <div class="ui rm-card">
+                <div class="rm-card__head"><p class="rm-card__title">Hand in: Mop the kitchen floor</p></div>
+                <div class="rm-upload"><img src="/landing/img/photo-f28270859-960.jpg" srcset="/landing/img/photo-f28270859-500.jpg 500w, /landing/img/photo-f28270859-960.jpg 960w, /landing/img/photo-f28270859.jpg 1280w" sizes="(max-width: 639px) 300px, 440px" width="960" height="720" alt="" loading="lazy" decoding="async" data-source="stand-in" data-subject="a mop bucket with its wringer, rinsed out"></div>
+                <label class="rm-field"><span>Note</span><span class="rm-input">Mopped and left the window open so it dries.</span></label>
+                <div class="rm-actions"><span class="rm-btn">Hand in</span><span class="rm-btn rm-btn--line">Cancel</span></div>
+              </div>
+            </div></figure>
+          </li>
+          <li class="mo-pc__step">
+            <h3>The house votes on it</h3>
+            <p>Most of the other roommates have to approve. Rejected work comes back to you, and you can hand it in 3 more times.</p>
+            <figure class="mo-pc__visual"><div class="rm-shot" role="img" aria-label="Mop the kitchen floor approved by Aditi and Mei, 10 points to Jonas, and Mei picked for the next turn">
+              <div class="ui rm-card">
+                <div class="rm-card__head"><p class="rm-card__title">Mop the kitchen floor</p><span class="rm-chip rm-chip--success">Done</span></div>
+                <span class="rm-card__lbl">2 of 2 approvals</span>
+                <span class="rm-bar" style="height: 6px"><i style="width: 100%"></i></span>
+                <div class="rm-pick"><span class="rm-av">A</span><span>Aditi Rao</span><span class="rm-chip rm-chip--success">Approved</span></div>
+                <div class="rm-pick"><span class="rm-av">M</span><span>Mei Tan</span><span class="rm-chip rm-chip--success">Approved</span></div>
+                <div class="rm-result">+10 points to Jonas</div>
+                <div class="rm-pick"><span class="rm-av rm-av--on">M</span><span>Next turn: Mei Tan<small>Due next Sunday, 20:00</small></span></div>
+              </div>
+            </div></figure>
+          </li>
+        </ol>
+      </div>
+      <div class="mo-pc__visuals frame"></div>
+    </div>
+  </section>
+
+  <!-- FEATURES-2x2 on two screens (.g2): money, swaps, points, chat -->
+  <section class="section g2" id="house" aria-labelledby="house-h">
+    <div class="wrap">
+      <div class="group">
+        <div class="section-head">
+          <h2 id="house-h">Shared bills, swaps and points. <span class="muted">Each house also gets its own chat.</span></h2>
+        </div>
+        <div class="grid">
+          <article class="card card--row card--open span-6 m-nolift">
+            <h3>Splits shared bills</h3>
+            <p>Add a bill once and Roomies divides it equally between active roommates. Everyone marks their share as paid.</p>
+            <div class="panel">
+              <div class="stage stage--fade-b"><div class="at-rise fit to-edge" style="--fit-max: 400px; --ax: max(24px, 50% - 200px); --ay: 48px; --ay-sm: 24px">
+                <div class="ui ui-panel rm-frag">
+                  <div class="rm-frag__head"><p class="rm-frag__title">Groceries</p><span class="rm-frag__big">₹2,480</span></div>
+                  <span class="rm-muted">Paid by Jonas · split between 4</span>
+                  <div class="rm-line"><span class="rm-av">A</span><span>Aditi Rao · ₹620</span><span class="rm-chip rm-chip--success">Paid</span></div>
+                  <div class="rm-line"><span class="rm-av">L</span><span>Leo Marsh · ₹620</span><span class="rm-chip rm-chip--warning">Owes</span></div>
+                  <div class="rm-line"><span class="rm-av">M</span><span>Mei Tan · ₹620</span><span class="rm-chip rm-chip--success">Paid</span></div>
+                  <div class="rm-line"><span class="rm-av">J</span><span>Jonas Weber · ₹620</span><span class="rm-chip rm-chip--neutral">Paid the bill</span></div>
+                  <span class="rm-muted" style="margin-top: 8px">Earlier bills</span>
+                  <div class="rm-line"><span class="rm-av">A</span><span>Electricity, October · ₹3,120</span><span class="rm-chip rm-chip--warning">1 owes</span></div>
+                  <div class="rm-line"><span class="rm-av">M</span><span>Wi-Fi, October · ₹999</span><span class="rm-chip rm-chip--success">Settled</span></div>
+                  <div class="rm-line"><span class="rm-av">L</span><span>Gas cylinder · ₹1,100</span><span class="rm-chip rm-chip--success">Settled</span></div>
+                  <div class="rm-line"><span class="rm-av">J</span><span>Water cans · ₹360</span><span class="rm-chip rm-chip--success">Settled</span></div>
+                </div>
+              </div></div>
+            </div>
+          </article>
+          <article class="card card--row card--open span-6 m-nolift">
+            <h3>Swaps a turn</h3>
+            <p>Busy on Thursday? Offer the turn to a roommate. It changes hands only if they accept.</p>
+            <div class="panel">
+              <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max: 400px; --ax: max(24px, 50% - 200px); --ay: calc(100% - 200px); --ay-sm: calc(100% - 200px)">
+                <div class="ui ui-panel rm-frag">
+                  <div class="rm-frag__head"><p class="rm-frag__title">Swap request</p><span class="rm-chip rm-chip--info">From Leo</span></div>
+                  <div class="rm-swap">
+                    <div><small>Leo gives</small><span>Laundry, Saturday</span></div>
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5.5h10M10.5 3 13 5.5 10.5 8M13 10.5H3M5.5 8 3 10.5 5.5 13"/></svg>
+                    <div><small>You give</small><span>Bins, Thursday</span></div>
+                  </div>
+                  <div class="rm-actions"><span class="rm-btn">Accept swap</span><span class="rm-btn rm-btn--line">Decline</span></div>
+                  <span class="rm-muted">Waiting for your answer</span>
+                </div>
+              </div></div>
+            </div>
+          </article>
+        </div>
+      </div>
+      <div class="grid">
+        <article class="card card--row card--open span-6 m-nolift">
+          <h3>Keeps a points table</h3>
+          <p>An approved turn earns the chore's points, 10 by default. A missed or failed turn costs the same and a ₹50 fine.</p>
+          <div class="panel">
+            <div class="stage stage--fade-b"><div class="at-rise fit to-edge" style="--fit-max: 400px; --ax: max(24px, 50% - 200px); --ay: 48px; --ay-sm: 24px">
+              <div class="ui ui-panel rm-frag">
+                <div class="rm-frag__head"><p class="rm-frag__title">Leaderboard</p><span class="rm-muted">Flat 12</span></div>
+                <div class="rm-line"><span class="rm-rank">1</span><span class="rmc__row" style="gap: 10px"><span class="rm-av">M</span>Mei Tan</span><b>120</b></div>
+                <div class="rm-line"><span class="rm-rank">2</span><span class="rmc__row" style="gap: 10px"><span class="rm-av">A</span>Aditi Rao</span><b>110</b></div>
+                <div class="rm-line"><span class="rm-rank">3</span><span class="rmc__row" style="gap: 10px"><span class="rm-av">J</span>Jonas Weber</span><b>90</b></div>
+                <div class="rm-line"><span class="rm-rank">4</span><span class="rmc__row" style="gap: 10px"><span class="rm-av">L</span>Leo Marsh</span><b>70</b></div>
+                <span class="rm-muted" style="margin-top: 8px">This week</span>
+                <div class="rm-line"><span class="rm-av">M</span><span>Hoover the stairs</span><b>+10</b></div>
+                <div class="rm-line"><span class="rm-av">L</span><span>Take the bins out · missed</span><b class="rm-red">−10</b></div>
+                <div class="rm-line"><span class="rm-av">A</span><span>Wash up after dinner</span><b>+10</b></div>
+                <div class="rm-line"><span class="rm-av">J</span><span>Mop the kitchen floor</span><b>+10</b></div>
+                <div class="rm-line"><span class="rm-av">M</span><span>Water the plants</span><b>+10</b></div>
+                <div class="rm-line"><span class="rm-av">L</span><span>Restock toilet roll</span><b>+10</b></div>
+              </div>
+            </div></div>
+          </div>
+        </article>
+        <article class="card card--row card--open span-6 m-nolift">
+          <h3>Gives the house a chat</h3>
+          <p>Plan the week, ask for a swap or chase a bill in a chat only your roommates can read.</p>
+          <div class="panel">
+            <div class="stage stage--fade-b"><div class="at-rise fit to-edge" style="--fit-max: 400px; --ax: max(24px, 50% - 200px); --ay: 48px; --ay-sm: 24px">
+              <div class="ui ui-panel rm-frag">
+                <div class="rm-frag__head"><p class="rm-frag__title">Flat 12</p><span class="rm-muted">4 roommates</span></div>
+                <div class="rm-msgs">
+                  <div class="rm-msg"><span class="rm-av">M</span><p><small>Mei</small>Who is buying bin bags this week?</p></div>
+                  <div class="rm-msg"><span class="rm-av">J</span><p><small>Jonas</small>I will, and I'll add them to expenses.</p></div>
+                  <div class="rm-msg rm-msg--me"><p>Thanks. I can take Thursday's bins if you swap.</p></div>
+                  <div class="rm-msg"><span class="rm-av">L</span><p><small>Leo</small>Sent you a swap for Saturday's laundry.</p></div>
+                  <div class="rm-msg"><span class="rm-av">A</span><p><small>Aditi</small>Washing-up photo is in. Pans are soaking.</p></div>
+                  <div class="rm-msg rm-msg--me"><p>Approved. Leo, the towels need another hour.</p></div>
+                  <div class="rm-msg"><span class="rm-av">L</span><p><small>Leo</small>Fair. I'll hand it in again tonight.</p></div>
+                </div>
+                <div class="rm-compose"><span>Message Flat 12</span><i></i></div>
+              </div>
+            </div></div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ: the page's split, every answer open -->
+  <section class="section" id="questions" aria-labelledby="questions-h">
+    <div class="wrap">
+      <div class="grid">
+        <div class="span-5 stack-4">
+          <h2 id="questions-h">Questions</h2>
+          <p class="muted">What roommates ask before they move their chores over.</p>
+        </div>
+        <div class="faq span-6 start-7">
+          <div class="faq__item"><h3>Who decides whose turn it is?</h3><p>Roomies does. It skips the last person to do the chore and anyone with two open chores, then picks who has done it least and longest ago.</p></div>
+          <div class="faq__item"><h3>Can I vote on my own chore?</h3><p>No. The other active roommates vote and a majority decides. In a house of four, that is two approvals.</p></div>
+          <div class="faq__item"><h3>What if my photo is rejected?</h3><p>The turn comes back as Changes requested. You can hand it in 3 more times before it fails and costs points.</p></div>
+          <div class="faq__item"><h3>What happens when a deadline passes?</h3><p>The turn is marked Missed and the chore's penalty is added. A repeating chore then moves to the next roommate.</p></div>
+          <div class="faq__item"><h3>Can a bill be split unevenly?</h3><p>Not today. Every bill is split equally between the roommates who are active in the house.</p></div>
+          <div class="faq__item"><h3>How do my roommates join?</h3><p>Start the house, then send them its invite code. They sign up, enter the code and join the rotation.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer closing footer--statement" id="contact" aria-labelledby="close-h">
+  <div class="wrap">
+    <div class="closing__cta close--word">
+      <div class="section-head--split">
+        <div><h2 id="close-h">Put your house's chores in one place</h2><p class="t-lead">Send your roommates the invite code and Roomies picks the first turns.</p></div>
+        <a class="btn btn--primary" href="/register">Start a house<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></a>
+      </div>
+      <p class="close__word" aria-hidden="true">Roomies</p>
+    </div>
+    <div class="closing__links">
+      <div class="grid">
+        <div class="span-6 stack-4">
+          <a class="nav__logo" href="#top"><svg class="rm-logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#171717"/><g transform="translate(7 7) scale(.75)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></g></svg>Roomies</a>
+          <p class="footer__lede">Chores, votes and shared bills for one house.</p>
+        </div>
+        <div class="span-3 start-7 footer__col"><h3>Product</h3><ul><li><a href="#chores">Chores</a></li><li><a href="#turns">Voting</a></li><li><a href="#house">Expenses</a></li><li><a href="#questions">Questions</a></li></ul></div>
+        <div class="span-3 footer__col"><h3>Account</h3><ul><li><a href="/login">Sign in</a></li><li><a href="/forgot-password">Reset password</a></li></ul></div>
+      </div>
+      <div class="footer__legal">
+        <span>&copy; 2026 Roomies</span>
+        <div class="socials"></div>
+        <a class="credits" href="/landing/credits.html">Photographs via Wikimedia Commons</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<nav class="actionbar" aria-label="Quick actions">
+  <a class="btn btn--primary" href="/register">Start a house</a>
+</nav>
+
+<script>try{if(localStorage.getItem('accessToken')){document.querySelectorAll('[data-signin]').forEach(function(a){a.textContent='Dashboard';a.href='/dashboard';});}}catch(e){}</script>
+<script type="module" src="/assets/system.js"></script>
+<script type="module" src="/assets/motion/motion.js"></script>
+<script type="module" src="/assets/layout/layout.js"></script>
+<script type="module" src="/landing/hero.js"></script>
+</body>
+</html>
