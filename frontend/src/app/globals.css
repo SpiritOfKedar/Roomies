@@ -36,6 +36,9 @@
   }
 }
 
+/* auth pages: the showcase cards drift gently (motion-safe only) */
+@keyframes auth-float { 50% { transform: translateY(-8px); } }
+
 @layer utilities {
   /* Thin, arrowless scrollbar for scrolling panels (chat, comment boxes) */
   .scrollbar-thin {

@@ -1,4 +1,5 @@
 'use client';
+import AuthShowcase from '@/components/AuthShowcase';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -80,10 +81,10 @@ export default function LoginPage() {
   };
 
   const inputClass = (hasError: boolean) =>
-    `w-full h-12 rounded-lg border bg-white/[0.03] px-4 text-base text-landing-fg placeholder-landing-dim focus:ring-1 focus:bg-white/[0.05] transition-all ${
+    `w-full h-12 rounded-lg border bg-white px-4 text-base text-[#171717] placeholder-[#a3a3a3] focus:ring-1 focus:bg-white transition-all ${
       hasError
-        ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/30'
-        : 'border-white/10 focus:border-white/30 focus:ring-white/10'
+        ? 'border-red-300 focus:border-red-500 focus:ring-red-500/30'
+        : 'border-[#E5E5E5] focus:border-[#171717] focus:ring-[#171717]'
     }`;
 
   return (
@@ -91,17 +92,17 @@ export default function LoginPage() {
       <div className="flex w-full flex-col justify-center px-6 py-12 sm:px-12 lg:w-1/2 lg:px-16 xl:px-24">
         <div className="mx-auto w-full max-w-md">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold tracking-tight text-landing-fg mb-2">Welcome back</h1>
-            <p className="text-landing-muted">Sign in to your Roomies account.</p>
+            <h1 className="text-3xl font-bold tracking-tight text-[#171717] mb-2">Welcome back</h1>
+            <p className="text-[#737373]">Sign in to your Roomies account.</p>
           </div>
 
-          <div className="flex border-b border-white/10 mb-8">
-            <span className="flex-1 pb-3 text-center text-sm font-semibold text-landing-fg border-b-2 border-landing-fg">
+          <div className="mb-8 flex rounded-full border border-[#E5E5E5] bg-white p-1 shadow-sm">
+            <span className="flex-1 rounded-full bg-[#171717] py-2 text-center text-sm font-semibold text-white shadow-[0_2px_8px_-2px_rgb(0_0_0/0.35)]">
               Login
             </span>
             <Link
               href="/register"
-              className="flex-1 pb-3 text-center text-sm font-semibold text-landing-muted hover:text-landing-fg border-b-2 border-transparent transition-colors"
+              className="flex-1 rounded-full py-2 text-center text-sm font-semibold text-[#737373] transition-colors hover:text-[#171717]"
             >
               Sign up
             </Link>
@@ -112,14 +113,14 @@ export default function LoginPage() {
               <div
                 id="login-error"
                 role="alert"
-                className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+                className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
               >
                 {error}
               </div>
             )}
 
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-landing-fg">Email</span>
+              <span className="text-sm font-medium text-[#171717]">Email</span>
               <div className="relative group">
                 <input
                   className={inputClass(!!(emailError || highlightBothFields))}
@@ -134,17 +135,17 @@ export default function LoginPage() {
                   aria-invalid={emailError || highlightBothFields ? true : undefined}
                   aria-describedby={emailError ? 'email-error' : error && highlightBothFields ? 'login-error' : undefined}
                 />
-                <Icon name="mail" size={20} className="absolute right-3 top-3 text-landing-dim group-focus-within:text-landing-muted transition-colors pointer-events-none" />
+                <Icon name="mail" size={20} className="absolute right-3 top-3 text-[#a3a3a3] group-focus-within:text-[#737373] transition-colors pointer-events-none" />
               </div>
               {emailError && (
-                <p id="email-error" role="alert" className="text-sm text-red-400">
+                <p id="email-error" role="alert" className="text-sm text-red-600">
                   {emailError}
                 </p>
               )}
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-landing-fg">Password</span>
+              <span className="text-sm font-medium text-[#171717]">Password</span>
               <div className="relative group">
                 <input
                   className={inputClass(!!(passwordError || highlightBothFields))}
@@ -162,24 +163,24 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-3 text-landing-dim hover:text-landing-fg transition-colors"
+                  className="absolute right-3 top-3 text-[#a3a3a3] hover:text-[#171717] transition-colors"
                 >
                   <Icon name={showPw ? 'visibility' : 'visibility_off'} size={20} />
                 </button>
               </div>
               {passwordError && (
-                <p id="password-error" role="alert" className="text-sm text-red-400">
+                <p id="password-error" role="alert" className="text-sm text-red-600">
                   {passwordError}
                 </p>
               )}
               <div className="flex justify-between items-center mt-1">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input className="rounded border-white/20 bg-white/5 text-landing-fg focus:ring-white/20" type="checkbox" />
-                  <span className="text-xs text-landing-muted">Remember me</span>
+                  <input className="rounded border-neutral-300 bg-white text-[#171717] focus:ring-[#171717]" type="checkbox" />
+                  <span className="text-xs text-[#737373]">Remember me</span>
                 </label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs font-medium text-landing-muted hover:text-landing-fg transition-colors"
+                  className="text-xs font-medium text-[#737373] hover:text-[#171717] transition-colors"
                 >
                   Forgot password?
                 </Link>
@@ -187,7 +188,7 @@ export default function LoginPage() {
             </label>
 
             <button
-              className="mt-1 flex h-11 w-full items-center justify-center rounded-full bg-landing-fg text-landing-bg font-semibold text-sm transition-all hover:bg-white disabled:opacity-60"
+              className="mt-1 flex h-12 w-full items-center justify-center rounded-full bg-[#171717] text-white font-semibold text-sm shadow-[0_10px_24px_-10px_rgb(0_0_0/0.6)] transition-all hover:-translate-y-px hover:bg-[#262626] disabled:opacity-60"
               type="submit"
               disabled={loading}
             >
@@ -195,9 +196,9 @@ export default function LoginPage() {
             </button>
 
             <div className="relative flex py-2 items-center">
-              <div className="grow border-t border-white/10" />
-              <span className="shrink mx-4 text-landing-dim text-xs uppercase tracking-wider">Or</span>
-              <div className="grow border-t border-white/10" />
+              <div className="grow border-t border-[#E5E5E5]" />
+              <span className="shrink mx-4 text-[#a3a3a3] text-xs uppercase tracking-wider">Or</span>
+              <div className="grow border-t border-[#E5E5E5]" />
             </div>
 
             <GoogleSignInButton
@@ -206,9 +207,9 @@ export default function LoginPage() {
               onError={setError}
             />
 
-            <p className="text-center text-sm text-landing-muted">
+            <p className="text-center text-sm text-[#737373]">
               Don&apos;t have an account?{' '}
-              <Link href="/register" className="font-semibold text-landing-fg hover:underline">
+              <Link href="/register" className="font-semibold text-[#171717] hover:underline">
                 Sign up
               </Link>
             </p>
@@ -216,22 +217,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="hidden lg:flex lg:w-1/2 items-center justify-center border-l border-white/[0.06] p-16">
-        <blockquote className="max-w-lg">
-          <p className="text-2xl font-bold leading-snug text-landing-fg">
-            &ldquo;Roomies transformed how we handle bills. No more awkward conversations at the end of the month.&rdquo;
-          </p>
-          <footer className="mt-8 flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-lg font-bold ring-2 ring-white/10">
-              S
-            </div>
-            <div>
-              <p className="font-semibold text-sm text-landing-fg">Sarah Jenkins</p>
-              <p className="text-xs text-landing-muted">San Francisco, CA</p>
-            </div>
-          </footer>
-        </blockquote>
-      </div>
+      <AuthShowcase title="Your house is where you left it" line="Turns, votes and bills pick up right where your roommates left them." />
     </>
   );
 }

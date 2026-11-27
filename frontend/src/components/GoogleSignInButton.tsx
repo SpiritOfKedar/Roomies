@@ -18,7 +18,7 @@ export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignI
         type="button"
         disabled
         title="Set NEXT_PUBLIC_GOOGLE_CLIENT_ID to enable Google sign-in"
-        className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] text-landing-dim"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-[#E5E5E5] bg-white text-[#a3a3a3]"
       >
         <GoogleIcon />
         <span className="text-sm font-semibold">Google</span>
@@ -51,7 +51,7 @@ export function GoogleSignInButton({ onSuccess, onError, disabled }: GoogleSignI
         onClick={() => {
           window.location.href = `${API_URL}/api/auth/google`;
         }}
-        className="text-xs font-medium text-landing-muted hover:text-landing-fg transition-colors"
+        className="text-xs font-medium text-[#737373] hover:text-[#171717] transition-colors"
       >
         Or use Google redirect flow
       </button>

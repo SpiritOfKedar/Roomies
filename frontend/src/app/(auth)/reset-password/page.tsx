@@ -1,4 +1,5 @@
 'use client';
+import AuthShowcase from '@/components/AuthShowcase';
 
 import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
@@ -67,15 +68,15 @@ function ResetPasswordForm() {
 
   return (
     <>
-      <div className="w-full lg:w-1/2 flex flex-col justify-center px-6 sm:px-12 md:px-24 xl:px-32 bg-white relative overflow-y-auto">
+      <div className="w-full lg:w-1/2 flex flex-col justify-center px-6 sm:px-12 md:px-24 xl:px-32 relative overflow-y-auto">
         <div className="w-full max-w-md mx-auto py-10">
           <div className="mb-10">
-            <h1 className="text-3xl font-extrabold tracking-tight text-[#111827] mb-3">Reset password</h1>
-            <p className="text-[#374151] text-lg">Choose a new password for your account.</p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-[#171717] mb-3">Reset password</h1>
+            <p className="text-[#525252] text-lg">Choose a new password for your account.</p>
           </div>
 
           {verifying && (
-            <p className="text-sm text-[#374151]">Verifying reset link…</p>
+            <p className="text-sm text-[#525252]">Verifying reset link…</p>
           )}
 
           {!verifying && !tokenValid && (
@@ -86,7 +87,7 @@ function ResetPasswordForm() {
               >
                 This reset link is invalid or has expired.
               </div>
-              <Link href="/forgot-password" className="font-bold text-[#2563eb] hover:underline text-sm">
+              <Link href="/forgot-password" className="font-bold text-[#171717] hover:underline text-sm">
                 Request a new reset link
               </Link>
             </div>
@@ -104,10 +105,10 @@ function ResetPasswordForm() {
               )}
 
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-semibold text-[#111827]">New password</span>
+                <span className="text-sm font-semibold text-[#171717]">New password</span>
                 <div className="relative">
                   <input
-                    className="w-full h-12 rounded-lg border border-[#e5e7eb] bg-[#f9fafb] px-4 text-base focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
+                    className="w-full h-12 rounded-lg border border-[#E5E5E5] bg-white px-4 text-base focus:border-[#171717] focus:ring-1 focus:ring-[#171717]"
                     type={showPw ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -117,7 +118,7 @@ function ResetPasswordForm() {
                   <button
                     type="button"
                     onClick={() => setShowPw(!showPw)}
-                    className="absolute right-3 top-3 text-gray-400 hover:text-[#111827]"
+                    className="absolute right-3 top-3 text-gray-400 hover:text-[#171717]"
                   >
                     <Icon name={showPw ? 'visibility' : 'visibility_off'} size={20} />
                   </button>
@@ -125,9 +126,9 @@ function ResetPasswordForm() {
               </label>
 
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-semibold text-[#111827]">Confirm password</span>
+                <span className="text-sm font-semibold text-[#171717]">Confirm password</span>
                 <input
-                  className="w-full h-12 rounded-lg border border-[#e5e7eb] bg-[#f9fafb] px-4 text-base focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
+                  className="w-full h-12 rounded-lg border border-[#E5E5E5] bg-white px-4 text-base focus:border-[#171717] focus:ring-1 focus:ring-[#171717]"
                   type={showPw ? 'text' : 'password'}
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
@@ -139,7 +140,7 @@ function ResetPasswordForm() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex h-12 w-full items-center justify-center rounded-lg bg-[#2563eb] hover:bg-blue-700 text-white font-bold transition-all disabled:opacity-60"
+                className="flex h-12 w-full items-center justify-center rounded-full bg-[#171717] hover:bg-[#262626] text-white font-semibold shadow-[0_10px_24px_-10px_rgb(0_0_0/0.6)] transition-all disabled:opacity-60"
               >
                 {loading ? 'Updating…' : 'Update password'}
               </button>
@@ -155,24 +156,22 @@ function ResetPasswordForm() {
             </div>
           )}
 
-          <p className="text-center text-sm text-[#374151] mt-8">
-            <Link href="/login" className="font-bold text-[#2563eb] hover:underline">
+          <p className="text-center text-sm text-[#525252] mt-8">
+            <Link href="/login" className="font-bold text-[#171717] hover:underline">
               Back to login
             </Link>
           </p>
         </div>
       </div>
 
-      <div className="hidden lg:flex w-1/2 relative bg-[#f9fafb] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
-      </div>
+      <AuthShowcase title="Pick a new password" line="Then sign in, and your house's chores are right where they were." />
     </>
   );
 }
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div className="p-10 text-center text-[#374151]">Loading…</div>}>
+    <Suspense fallback={<div className="p-10 text-center text-[#525252]">Loading…</div>}>
       <ResetPasswordForm />
     </Suspense>
   );
